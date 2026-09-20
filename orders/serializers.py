@@ -211,6 +211,20 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         if order_type == "manual":
             validated_data['status'] = 'pending_assignment'
         
+        # Online catalog orders are paid before fulfillment. Calculate the
+        # amount from stored prices instead of trusting the client payload.
+        if order_type == "online" and services:
+            quantities_by_service = {
+                item.get("service_id"): item.get("quantity", 1)
+                for item in service_quantities
+            }
+            catalog_total = sum(
+                service.price * quantities_by_service.get(service.id, 1)
+                for service in services
+            )
+            validated_data["price"] = catalog_total
+            validated_data["actual_price"] = catalog_total
+
         # Create the order
         order = Order.objects.create(**validated_data)
         
