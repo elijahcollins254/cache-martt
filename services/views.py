@@ -1,6 +1,13 @@
 from rest_framework import viewsets, permissions, filters
-from .models import Service
-from .serializers import ServiceSerializer
+from .models import Service, ServiceCategory
+from .serializers import ServiceCategorySerializer, ServiceSerializer
+
+
+class ServiceCategoryViewSet(viewsets.ReadOnlyModelViewSet):
+    """Expose active service categories for catalogue filters."""
+    queryset = ServiceCategory.objects.filter(is_active=True).order_by('name')
+    serializer_class = ServiceCategorySerializer
+    permission_classes = [permissions.AllowAny]
 
 class ServiceViewSet(viewsets.ModelViewSet):
     """List and manage service catalogue (laundry, duvet, carpet, fumigation, etc.)"""

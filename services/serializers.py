@@ -1,6 +1,12 @@
 # services/serializers.py
 from rest_framework import serializers
-from .models import Service
+from .models import Service, ServiceCategory
+
+
+class ServiceCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ServiceCategory
+        fields = ["id", "name", "slug"]
 
 
 class ServiceSerializer(serializers.ModelSerializer):
