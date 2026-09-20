@@ -85,7 +85,7 @@ class StaffCreateOrderView(APIView):
                             sms_service = AfricasTalkingSMSService()
                             # Format phone number to international format
                             formatted_phone = format_phone_number(user_phone)
-                            order_url = f"https://www.wildwash.co.ke/orders/{order.code}"
+                            order_url = f"https://www.cache.co.ke/orders/{order.code}"
                             
                             # Extract clean pickup address and calculate hours for estimated delivery
                             clean_pickup = order.pickup_address.split('(contact:')[0].strip() if order.pickup_address else 'N/A'
@@ -96,7 +96,7 @@ class StaffCreateOrderView(APIView):
                                 est_time = 'TBD'
                             
                             customer_message = (
-                                f"WILDWASH SERVICES\n"
+                                f"CACHE INDUSTRIES\n"
                                 f"Order Created!\n"
                                 f"Order #: {order.code}\n"
                                 f"Services: {services}\n"
@@ -125,7 +125,7 @@ class StaffCreateOrderView(APIView):
                         try:
                             from django.utils import timezone
                             sms_service = AfricasTalkingSMSService()
-                            order_url = f"https://www.wildwash.co.ke/orders/{order.code}"
+                            order_url = f"https://www.cache.co.ke/orders/{order.code}"
                             
                             # Extract clean pickup address and calculate hours for estimated delivery
                             clean_pickup = order.pickup_address.split('(contact:')[0].strip() if order.pickup_address else 'N/A'
@@ -473,7 +473,7 @@ class OrderUpdateView(APIView):
 
                         if rider_phone and str(rider_phone).strip():
                             sms_service = AfricasTalkingSMSService()
-                            rider_url = f"https://www.wildwash.co.ke/rider/orders/{order.code}"
+                            rider_url = f"https://www.cache.co.ke/rider/orders/{order.code}"
 
                             # Format services list
                             services = ', '.join([s.name for s in order.services.all()]) if order.services.exists() else 'N/A'
@@ -490,14 +490,14 @@ class OrderUpdateView(APIView):
                                 est_time = 'TBD'
 
                             rider_message = (
-                                f"WILDWASH SERVICES\n"
+                                f"CACHE INDUSTRIES\n"
                                 f"New Order Assigned!\n"
                                 f"Order #: {order.code}\n"
                                 f"Customer: {user_name}\n"
                                 f"Phone: {user_phone or 'N/A'}\n"
                                 f"Pickup: {clean_pickup}\n"
                                 f"Dropoff: {order.dropoff_address}\n"
-                                f"Services: {services}\n"
+                                f"Products: {services}\n"
                                 f"Items: {order.items}\n"
                                 f"Price: KES {order.price or 'TBD'}\n"
                                 f"Est. Delivery: {est_time}\n"
@@ -1233,7 +1233,7 @@ class OrderListCreateView(generics.ListCreateAPIView):
                     sms_service = AfricasTalkingSMSService()
                     # Format phone number to international format
                     formatted_phone = format_phone_number(user_phone)
-                    order_url = f"https://www.wildwash.co.ke/orders/{order.code}"
+                    order_url = f"https://www.cache.co.ke/orders/{order.code}"
                     
                     # Extract clean pickup address and calculate hours for estimated delivery
                     clean_pickup = order.pickup_address.split('(contact:')[0].strip() if order.pickup_address else 'N/A'
@@ -1244,7 +1244,7 @@ class OrderListCreateView(generics.ListCreateAPIView):
                         est_time = 'TBD'
                     
                     customer_message = (
-                        f"WILDWASH SERVICES\n"
+                        f"CACHE INDUSTRIES\n"
                         f"Order Confirmed!\n"
                         f"Order #: {order.code}\n"
                         f"Services: {services}\n"
@@ -1273,7 +1273,7 @@ class OrderListCreateView(generics.ListCreateAPIView):
                 try:
                     from django.utils import timezone
                     sms_service = AfricasTalkingSMSService()
-                    admin_url = f"https://www.wildwash.co.ke/orders/{order.code}"
+                    admin_url = f"https://www.cache.co.ke/orders/{order.code}"
                     
                     # Extract clean pickup address (remove contact info)
                     clean_pickup = order.pickup_address.split('(contact:')[0].strip() if order.pickup_address else 'N/A'
@@ -1286,7 +1286,7 @@ class OrderListCreateView(generics.ListCreateAPIView):
                         est_time = 'TBD'
                     
                     admin_message = (
-                        f"WILDWASH SERVICES\n"
+                        f"CACHE INDUSTRIES\n"
                         f"New Online Order Assigned!\n"
                         f"Order #: {order.code}\n"
                         f"Customer: {user_name}\n"
@@ -1331,7 +1331,7 @@ class OrderListCreateView(generics.ListCreateAPIView):
                         from django.utils import timezone
                         print(f"[DEBUG] Attempting to send SMS to rider {order.rider.username} at {rider_phone}")
                         sms_service = AfricasTalkingSMSService()
-                        rider_url = f"https://www.wildwash.co.ke/rider/orders/{order.code}"
+                        rider_url = f"https://www.cache.co.ke/rider/orders/{order.code}"
                         
                         # Extract clean pickup address and calculate hours for estimated delivery
                         clean_pickup = order.pickup_address.split('(contact:')[0].strip() if order.pickup_address else 'N/A'
@@ -1343,14 +1343,14 @@ class OrderListCreateView(generics.ListCreateAPIView):
                         
                         rider_name = order.rider.get_full_name() or order.rider.username if order.rider else 'Rider'
                         rider_message = (
-                            f"WILDWASH SERVICES\n"
+                            f"CACHE INDUSTRIES\n"
                             f"New Order Assigned!\n"
                             f"Order #: {order.code}\n"
                             f"Customer: {user_name}\n"
                             f"Phone: {user_phone or 'N/A'}\n"
                             f"Pickup: {clean_pickup}\n"
                             f"Dropoff: {order.dropoff_address}\n"
-                            f"Services: {services}\n"
+                            f"Products: {services}\n"
                             f"Items: {order.items}\n"
                             f"Price: KES {order.price or 'TBD'}\n"
                             f"Est. Delivery: {est_time}\n"
@@ -1503,7 +1503,7 @@ class RequestDeliveryView(APIView):
                     # Extract clean pickup address
                     clean_pickup = order.pickup_address.split('(contact:')[0].strip() if order.pickup_address else 'N/A'
                     
-                    rider_url = f"https://www.wildwash.co.ke/rider/orders/{order.code}"
+                    rider_url = f"https://www.cache.co.ke/rider/orders/{order.code}"
                     rider_message = (
                         f"Delivery Request!\n"
                         f"Order #: {order.code}\n"

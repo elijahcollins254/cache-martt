@@ -7,7 +7,7 @@ from orders.models import Order
 import random
 
 class Command(BaseCommand):
-    help = 'Creates sample data for the Wildwash application'
+    help = 'Creates sample data for the cache application'
 
     def handle(self, *args, **options):
         self.stdout.write("Creating sample data...")

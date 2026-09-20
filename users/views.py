@@ -543,7 +543,7 @@ class RequestPasswordResetView(APIView):
         
         try:
             sms_service = AfricasTalkingSMSService()
-            message = f"Your Wildwash password reset code is: {code}. This code expires in 15 minutes."
+            message = f"Your cache password reset code is: {code}. This code expires in 15 minutes."
             sms_service.send_sms(phone_number=formatted_phone, message=message)
         except Exception as e:
             print(f"Failed to send SMS: {str(e)}")

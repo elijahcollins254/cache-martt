@@ -33,7 +33,7 @@ DEBUG = True
 # Check if we're in Vercel build mode
 VERCEL_BUILD = os.getenv('VERCEL_BUILD') == '1'
 
-ALLOWED_HOSTS = ['https://www.wildwash.co.ke',"martt.cache.co.ke",'api.wildwash.co.ke', '127.0.0.1', 'localhost', '.vercel.app', 'wildwash.kibeezy.com', 'wildwash.co.ke', 'rain.wildwash.co.ke', '8000-firebase-wild-wash-apigit-1760697854679.cluster-lu4mup47g5gm4rtyvhzpwbfadi.cloudworkstations.dev', '3000-firebase-wildwashgit-1760698481871.cluster-ikslh4rdsnbqsvu5nw3v4dqjj2.cloudworkstations.dev', "mart.cache.co.ke",]
+ALLOWED_HOSTS = ['https://www.cache.co.ke',"martt.cache.co.ke",'api.cache.co.ke', '127.0.0.1', 'localhost', '.vercel.app', 'cache.kibeezy.com', 'cache.co.ke', 'rain.cache.co.ke', '8000-firebase-wild-wash-apigit-1760697854679.cluster-lu4mup47g5gm4rtyvhzpwbfadi.cloudworkstations.dev', '3000-firebase-cachegit-1760698481871.cluster-ikslh4rdsnbqsvu5nw3v4dqjj2.cloudworkstations.dev', "mart.cache.co.ke",]
 
 
 # Application definition
@@ -199,15 +199,15 @@ CSRF_COOKIE_SAMESITE = 'Lax'
 CSRF_COOKIE_HTTPONLY = False
 CSRF_USE_SESSIONS = False
 CSRF_TRUSTED_ORIGINS = [
-    "https://api.wildwash.co.ke",
+    "https://api.cache.co.ke",
     "https://martt.cache.co.ke",
     "http://localhost:3000",
     "http://127.0.0.1:8000",
-    "https://www.wildwash.co.ke",
-    "https://wildwash.co.ke",
-    "https://wildwash.kibeezy.com",
+    "https://www.cache.co.ke",
+    "https://cache.co.ke",
+    "https://cache.kibeezy.com",
     "https://8000-firebase-wild-wash-apigit-1760697854679.cluster-lu4mup47g5gm4rtyvhzpwbfadi.cloudworkstations.dev",
-    "https://3000-firebase-wildwashgit-1760698481871.cluster-ikslh4rdsnbqsvu5nw3v4dqjj2.cloudworkstations.dev"
+    "https://3000-firebase-cachegit-1760698481871.cluster-ikslh4rdsnbqsvu5nw3v4dqjj2.cloudworkstations.dev"
 ]
 
 
@@ -216,15 +216,15 @@ CORS_ALLOW_ALL_ORIGINS = True
 
 
 CORS_ALLOWED_ORIGINS = [
-    "https://9000-firebase-wildwashgit-1760698481871.cluster-ikslh4rdsnbqsvu5nw3v4dqjj2.cloudworkstations.dev",
+    "https://9000-firebase-cachegit-1760698481871.cluster-ikslh4rdsnbqsvu5nw3v4dqjj2.cloudworkstations.dev",
     "https://8000-firebase-wild-wash-apigit-1760697854679.cluster-lu4mup47g5gm4rtyvhzpwbfadi.cloudworkstations.dev",
-    "http://wildwash.kibeezy.com",
+    "http://cache.kibeezy.com",
     "https://martt.cache.co.ke",
-    "https://www.wildwash.co.ke",
-    "https://3000-firebase-wildwashgit-1760698481871.cluster-ikslh4rdsnbqsvu5nw3v4dqjj2.cloudworkstations.dev",
-    "https://wildwash.kibeezy.com",
-    "https://wildwash.co.ke",
-    "https://api.wildwash.co.ke",    
+    "https://www.cache.co.ke",
+    "https://3000-firebase-cachegit-1760698481871.cluster-ikslh4rdsnbqsvu5nw3v4dqjj2.cloudworkstations.dev",
+    "https://cache.kibeezy.com",
+    "https://cache.co.ke",
+    "https://api.cache.co.ke",    
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://127.0.0.1:8000",
@@ -254,12 +254,12 @@ MPESA_CONSUMER_KEY = os.getenv('MPESA_CONSUMER_KEY', '')
 MPESA_CONSUMER_SECRET = os.getenv('MPESA_CONSUMER_SECRET', '')
 MPESA_BUSINESS_SHORTCODE = os.getenv('MPESA_BUSINESS_SHORTCODE', '')
 MPESA_PASSKEY = os.getenv('MPESA_PASSKEY', '')
-MPESA_CALLBACK_URL = os.getenv('MPESA_CALLBACK_URL', 'https://api.wildwash.co.ke/api/payments/mpesa/callback/')
+MPESA_CALLBACK_URL = os.getenv('MPESA_CALLBACK_URL', 'https://api.cache.co.ke/api/payments/mpesa/callback/')
 
 # Africa's Talking Configuration
 AFRICAS_TALKING_API_KEY = os.getenv('AFRICAS_TALKING_API_KEY', '')
 AFRICAS_TALKING_USERNAME = os.getenv('AFRICAS_TALKING_USERNAME', 'sandbox')
-AFRICAS_TALKING_SENDER_ID = os.getenv('AFRICAS_TALKING_SENDER_ID', 'WILDWASH')
+AFRICAS_TALKING_SENDER_ID = os.getenv('AFRICAS_TALKING_SENDER_ID', 'cache')
 ADMIN_PHONE_NUMBER = os.getenv('ADMIN_PHONE_NUMBER', '+254712345678')  # Default admin phone, update in .env
 
 

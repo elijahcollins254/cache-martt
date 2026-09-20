@@ -55,12 +55,12 @@ def activate_paid_order(order, payment_method):
         services = ', '.join(service.name for service in order.services.all()) or 'N/A'
         customer_phone = order.user.phone if order.user and order.user.phone else None
         message = (
-            f"WILDWASH SERVICES\n"
+            f"CACHE INDUSTRIES\n"
             f"Payment Confirmed!\n"
             f"Order #: {order.code}\n"
             f"Services: {services}\n"
             f"Amount: KES {order.actual_price or order.price}\n"
-            f"View: https://www.wildwash.co.ke/orders/{order.code}"
+            f"View: https://www.cache.co.ke/orders/{order.code}"
         )
         sms_service = AfricasTalkingSMSService()
         if customer_phone:
@@ -1028,7 +1028,7 @@ class MpesaSTKPushView(views.APIView):
             "PhoneNumber": formatted_phone,
             "CallBackURL": settings.MPESA_CALLBACK_URL,
             "AccountReference": order_id,
-            "TransactionDesc": f"Wildwash Order {order_id}"
+            "TransactionDesc": f"cache Order {order_id}"
         }
         
         logger.info(f"Initiating STK Push to {formatted_phone} for amount {amount} KES")

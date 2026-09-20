@@ -311,7 +311,7 @@ class AfricasTalkingSMSService:
             # Extract clean pickup address
             clean_pickup = order.pickup_address.split('(contact:')[0].strip() if order.pickup_address else 'N/A'
             
-            rider_url = f"https://www.wildwash.co.ke/rider/orders/{order.code}"
+            rider_url = f"https://www.cache.co.ke/rider/orders/{order.code}"
             message = (
                 f"Order Ready for Delivery{rider_info}!\n"
                 f"Order: {order.code}\n"
@@ -357,7 +357,7 @@ class AfricasTalkingSMSService:
             from django.utils import timezone
             
             services = ', '.join([s.name for s in order.services.all()]) if order.services.exists() else 'N/A'
-            order_url = f"https://www.wildwash.co.ke/orders/{order.code}"
+            order_url = f"https://www.cache.co.ke/orders/{order.code}"
             
             # Extract clean pickup address and calculate hours for estimated delivery
             clean_pickup = order.pickup_address.split('(contact:')[0].strip() if order.pickup_address else 'N/A'
@@ -376,7 +376,7 @@ class AfricasTalkingSMSService:
                 f"Price: KES {order.price or 'TBD'}\n"
                 f"Est. Delivery: {est_time}\n"
                 f"View: {order_url}\n"
-                f"Thank you for choosing WildWash!"
+                f"Thank you for choosing cache!"
             )
             
             result = self.send_sms(customer_phone, message)
@@ -408,12 +408,12 @@ class AfricasTalkingSMSService:
             os.environ['REQUESTS_CA_BUNDLE'] = ''
             os.environ['CURL_CA_BUNDLE'] = ''
             
-            order_url = f"https://www.wildwash.co.ke/orders/{order.code}"
+            order_url = f"https://www.cache.co.ke/orders/{order.code}"
             message = (
                 f"Your Order #{order.code} Delivered!\n"
-                f"Thank you for using WildWash.\n"
+                f"Thank you for using Cache.\n"
                 f"View order: {order_url}\n"
-                f"Rate us: wildwash.co.ke"
+                f"Rate us: cache.co.ke"
             )
             
             result = self.send_sms(customer_phone, message)
@@ -459,7 +459,7 @@ class AfricasTalkingSMSService:
             # Format delivery/pickup info
             delivery_text = "ready for delivery" if dropoff_address.lower() != 'to be assigned' else "ready for pickup"
             
-            order_url = f"https://www.wildwash.co.ke/orders/{order.code}"
+            order_url = f"https://www.cache.co.ke/orders/{order.code}"
             message = (
                 f"Your Order is Ready!\n"
                 f"Order #: {order.code}\n"
@@ -471,7 +471,7 @@ class AfricasTalkingSMSService:
                 f"Amount: KES {price}\n"
                 f"Your order is {delivery_text}!\n"
                 f"View: {order_url}\n"
-                f"Thank you for choosing WildWash!"
+                f"Thank you for choosing cache!"
             )
             
             result = self.send_sms(customer_phone, message)

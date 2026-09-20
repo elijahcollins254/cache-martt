@@ -141,7 +141,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             if 'user' not in validated_data or validated_data['user'] is None:
                 # Create or get guest user for manual orders
                 guest_username = "guest_orders"
-                guest_email = "guest@wildwash.local"
+                guest_email = "guest@cache.local"
                 guest_user, created = User.objects.get_or_create(
                     username=guest_username,
                     defaults={"email": guest_email, "is_active": False},
@@ -154,7 +154,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             # For online orders, use normal user handling
             if not (user and getattr(user, "is_authenticated", False)):
                 guest_username = "guest_orders"
-                guest_email = "guest@wildwash.local"
+                guest_email = "guest@cache.local"
                 guest_user, created = User.objects.get_or_create(
                     username=guest_username,
                     defaults={"email": guest_email, "is_active": False},
