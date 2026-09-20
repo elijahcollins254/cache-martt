@@ -37,7 +37,7 @@ class ServiceAdmin(admin.ModelAdmin):
             'fields': ('name', 'category', 'price')
         }),
         ("Details", {
-            'fields': ('description', 'image')
+            'fields': ('description', 'image_url', 'image')
         }),
         ("Status", {
             'fields': ('is_active',)

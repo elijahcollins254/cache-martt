@@ -4,17 +4,18 @@ from .models import Service
 
 
 class ServiceSerializer(serializers.ModelSerializer):
-    image_url = serializers.SerializerMethodField()
     category = serializers.CharField(source='category.slug', read_only=True, allow_null=True)
 
-    def get_image_url(self, obj):
-        """Return full URL for the image"""
-        if obj.image:
+    def to_representation(self, instance):
+        """Prefer a remote image URL and retain compatibility with uploaded images."""
+        representation = super().to_representation(instance)
+        if not representation.get('image_url') and instance.image:
             request = self.context.get('request')
             if request:
-                return request.build_absolute_uri(obj.image.url)
-            return obj.image.url
-        return None
+                representation['image_url'] = request.build_absolute_uri(instance.image.url)
+            else:
+                representation['image_url'] = instance.image.url
+        return representation
 
     class Meta:
         model = Service

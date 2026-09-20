@@ -26,6 +26,7 @@ class Service(models.Model):
     price = models.DecimalField(max_digits=10, decimal_places=2)
     description = models.TextField(blank=True)
     image = models.ImageField(upload_to='services/', null=True, blank=True, help_text='Service image')
+    image_url = models.URLField(blank=True, null=True, help_text='Remote image URL (preferred over uploaded image)')
     is_active = models.BooleanField(default=True, help_text='Inactive services will be hidden from the website')
     created_at = models.DateTimeField(auto_now_add=True, null=True)
     updated_at = models.DateTimeField(auto_now=True)
