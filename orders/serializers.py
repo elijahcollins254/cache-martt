@@ -68,6 +68,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         model = Order
         fields = [
             "id",
+            "code",
             "service",
             "services",
             "service_location",
@@ -91,7 +92,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             "customer_name",
             "customer_phone",
         ]
-        read_only_fields = ["id", "total_price"]
+        read_only_fields = ["id", "code", "total_price"]
 
     def validate(self, data):
         # basic sanity defaults / checks
@@ -210,6 +211,9 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         # For manual orders, set status to pending_assignment (don't auto-assign rider)
         if order_type == "manual":
             validated_data['status'] = 'pending_assignment'
+        else:
+            # Online orders stay out of staff queues until payment succeeds.
+            validated_data['status'] = 'pending_payment'
         
         # Online catalog orders are paid before fulfillment. Calculate the
         # amount from stored prices instead of trusting the client payload.

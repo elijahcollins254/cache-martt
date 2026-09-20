@@ -17,6 +17,59 @@ from rest_framework.permissions import IsAuthenticated
 
 logger = logging.getLogger(__name__)
 
+
+def activate_paid_order(order, payment_method):
+    """Move a paid online order into the normal workflow and notify parties."""
+    order.payment_method = payment_method
+    if order.status == 'pending_payment':
+        order.status = 'requested'
+    order.save(update_fields=['payment_method', 'status'])
+
+    try:
+        from notifications.models import Notification
+        from django.contrib.auth import get_user_model
+
+        if order.user:
+            Notification.objects.create(
+                user=order.user,
+                order=order,
+                message=f"Payment received for order {order.code}. Your order has been placed.",
+                notification_type='new_order'
+            )
+
+        User = get_user_model()
+        for admin in User.objects.filter(is_superuser=True, is_active=True):
+            Notification.objects.create(
+                user=admin,
+                order=order,
+                message=f"Paid online order {order.code} is ready for processing.",
+                notification_type='new_order'
+            )
+    except Exception:
+        logger.exception("Failed to create paid-order notifications for %s", order.code)
+
+    try:
+        from django.conf import settings
+        from services.sms_service import AfricasTalkingSMSService, format_phone_number
+
+        services = ', '.join(service.name for service in order.services.all()) or 'N/A'
+        customer_phone = order.user.phone if order.user and order.user.phone else None
+        message = (
+            f"WILDWASH SERVICES\n"
+            f"Payment Confirmed!\n"
+            f"Order #: {order.code}\n"
+            f"Services: {services}\n"
+            f"Amount: KES {order.actual_price or order.price}\n"
+            f"View: https://www.wildwash.co.ke/orders/{order.code}"
+        )
+        sms_service = AfricasTalkingSMSService()
+        if customer_phone:
+            sms_service.send_sms(format_phone_number(customer_phone), message)
+        if settings.ADMIN_PHONE_NUMBER:
+            sms_service.send_sms(settings.ADMIN_PHONE_NUMBER, message.replace('Payment Confirmed!', 'PAID ONLINE ORDER!'))
+    except Exception:
+        logger.exception("Failed to send paid-order SMS for %s", order.code)
+
 class BNPLViewSet(viewsets.GenericViewSet):
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
@@ -518,8 +571,7 @@ class BNPLViewSet(viewsets.GenericViewSet):
             # Update the order's payment_method to reflect BNPL
             try:
                 order = Order.objects.get(code=order_id)
-                order.payment_method = 'bnpl'
-                order.save(update_fields=['payment_method'])
+                activate_paid_order(order, 'bnpl')
             except Order.DoesNotExist:
                 logger.warning(f"Order with code {order_id} not found when processing BNPL payment")
 
@@ -577,12 +629,12 @@ class BNPLViewSet(viewsets.GenericViewSet):
                 )
 
             # SECURITY: ONLY use actual_price from staff input, no fallback to estimated price
-            order_price = order.get_latest_staff_price()
+            order_price = order.actual_price or order.get_latest_staff_price()
             
             if order_price is None:
-                logger.error(f"[SECURITY] BNPL: Order {order_id} does not have actual_price set by staff. Estimated price (package calculation) is not accepted for checkout.")
+                logger.error(f"[SECURITY] BNPL: Order {order_id} has no payable amount.")
                 return Response(
-                    {'detail': f'Order cannot be checked out: Staff must set the actual price. The package-calculated price is only an estimate.'},
+                    {'detail': 'Order cannot be checked out because it has no price.'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
@@ -833,12 +885,12 @@ class MpesaSTKPushView(views.APIView):
 
             # SECURITY: ONLY use actual_price from staff input, no fallback to estimated price
             from decimal import Decimal
-            order_price = order.get_latest_staff_price()
+            order_price = order.actual_price or order.get_latest_staff_price()
             
             if order_price is None:
-                logger.error(f"[SECURITY] Order {order_id} does not have actual_price set by staff. Estimated price (package calculation) is not accepted for checkout.")
+                logger.error(f"[SECURITY] Order {order_id} has no payable amount.")
                 return Response(
-                    {'detail': f'Order cannot be checked out: Staff must set the actual price. The package-calculated price is only an estimate.'},
+                    {'detail': 'Order cannot be checked out because it has no price.'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
@@ -1146,8 +1198,7 @@ class MpesaCallbackView(views.APIView):
                         if order_reference and order_reference != 'GAME_WALLET_TOPUP' and not order_reference.startswith('BNPL_BALANCE'):
                             try:
                                 order = Order.objects.get(code=order_reference)
-                                order.payment_method = 'mpesa'
-                                order.save(update_fields=['payment_method'])
+                                activate_paid_order(order, 'mpesa')
                                 logger.info(f"Updated order {order_reference} payment_method to mpesa")
                             except Order.DoesNotExist:
                                 logger.warning(f"Order with code {order_reference} not found when processing M-Pesa callback")

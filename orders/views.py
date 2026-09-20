@@ -1165,6 +1165,11 @@ class OrderListCreateView(generics.ListCreateAPIView):
         
         print(f"[DEBUG] Rider after assignment: {order.rider.username if order.rider else 'None'}")
         print(f"[DEBUG] Rider phone: {order.rider.phone if order.rider and hasattr(order.rider, 'phone') else 'N/A'}")
+
+        # Online orders are provisional until checkout succeeds. Do not notify
+        # staff or customers, or expose the order as placed, before payment.
+        if order.order_type == 'online' and not order.is_paid():
+            return
         
         # Create in-app notifications for all three parties
         try:

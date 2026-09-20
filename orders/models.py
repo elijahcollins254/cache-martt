@@ -9,6 +9,7 @@ import uuid
 class Order(models.Model):
     STATUS_CHOICES = [
         # Initial stages
+        ('pending_payment', 'Pending Payment'),
         ('requested', 'Order Requested'),
         ('pending_assignment', 'Pending Pickup Assignment'),  # Awaiting pickup rider
         ('assigned_pickup', 'Assigned for Pickup'),           # Pickup rider assigned
