@@ -219,7 +219,7 @@ CORS_ALLOWED_ORIGINS = [
     "https://9000-firebase-wildwashgit-1760698481871.cluster-ikslh4rdsnbqsvu5nw3v4dqjj2.cloudworkstations.dev",
     "https://8000-firebase-wild-wash-apigit-1760697854679.cluster-lu4mup47g5gm4rtyvhzpwbfadi.cloudworkstations.dev",
     "http://wildwash.kibeezy.com",
-    "martt.cache.co.ke",
+    "https://martt.cache.co.ke",
     "https://www.wildwash.co.ke",
     "https://3000-firebase-wildwashgit-1760698481871.cluster-ikslh4rdsnbqsvu5nw3v4dqjj2.cloudworkstations.dev",
     "https://wildwash.kibeezy.com",
