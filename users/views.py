@@ -68,8 +68,21 @@ class UserProfileView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = UserSerializer
 
+    @staticmethod
+    def sync_profile_complete(user):
+        required_fields = ['first_name', 'last_name', 'phone', 'location', 'pickup_address']
+        is_complete = all(
+            str(getattr(user, field, '') or '').strip()
+            for field in required_fields
+        )
+        if user.profile_complete != is_complete:
+            user.profile_complete = is_complete
+            user.save(update_fields=['profile_complete'])
+        return is_complete
+
     def get(self, request):
         """Get the current user's profile"""
+        self.sync_profile_complete(request.user)
         serializer = self.serializer_class(request.user)
         return Response(serializer.data)
 
@@ -79,19 +92,9 @@ class UserProfileView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         
-        # Auto-set profile_complete to true if all required fields are now filled
+        # Keep the flag synchronized when profile fields are changed.
         user = request.user
-        required_fields = ['first_name', 'last_name', 'phone', 'location', 'pickup_address']
-        
-        # Check if all required fields have values (not empty strings or None)
-        all_fields_filled = all(
-            getattr(user, field, '').strip() 
-            for field in required_fields
-        )
-        
-        if all_fields_filled and not user.profile_complete:
-            user.profile_complete = True
-            user.save(update_fields=['profile_complete'])
+        self.sync_profile_complete(user)
         
         return Response(self.serializer_class(user).data)
 
