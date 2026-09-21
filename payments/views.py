@@ -5,6 +5,7 @@ import os
 from datetime import datetime
 from decimal import Decimal
 from django.conf import settings
+from django.db import transaction
 from rest_framework import views, viewsets, permissions, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
@@ -599,6 +600,125 @@ class BNPLViewSet(viewsets.GenericViewSet):
             logger.error(f"Error processing BNPL payment: {str(e)}", exc_info=True)
             return Response(
                 {'detail': f'Error processing BNPL payment: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['post'])
+    @transaction.atomic
+    def checkout(self, request):
+        """Use BOOST credit first and collect the remaining amount by M-Pesa."""
+        try:
+            order_id = request.data.get('order_id')
+            requested_total = Decimal(str(request.data.get('amount')))
+            phone = request.data.get('phone_number') or getattr(request.user, 'phone', None)
+
+            if not order_id or requested_total <= 0 or not phone:
+                return Response(
+                    {'detail': 'order_id, amount, and phone_number are required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            amount_error = self._validate_bnpl_order_amount(order_id, requested_total)
+            if amount_error:
+                return amount_error
+
+            account = BNPLUser.objects.select_for_update().get(user=request.user)
+            if not account.is_active:
+                return Response(
+                    {'detail': 'Your BOOST account is inactive'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            available_credit = max(account.credit_limit - account.current_balance, Decimal('0.00'))
+            boost_amount = min(requested_total, available_credit)
+            mpesa_amount = requested_total - boost_amount
+
+            account.current_balance += boost_amount
+            account.save(update_fields=['current_balance', 'updated_at'])
+
+            boost_payment = Payment.objects.create(
+                user=request.user,
+                order_id=None,
+                amount=boost_amount,
+                phone_number=phone,
+                provider='bnpl',
+                status=Payment.STATUS_SUCCESS,
+                raw_payload={
+                    'order_reference': order_id,
+                    'is_boost_credit': True,
+                    'boost_amount': float(boost_amount),
+                    'order_total': float(requested_total),
+                }
+            )
+            boost_payment.mark_success()
+
+            if mpesa_amount <= 0:
+                order = Order.objects.get(code=order_id)
+                activate_paid_order(order, 'bnpl')
+                return Response({
+                    'status': 'success',
+                    'payment_method': 'boost',
+                    'boost_amount': float(boost_amount),
+                    'mpesa_amount': 0,
+                    'message': 'BOOST covered the full order amount',
+                }, status=status.HTTP_201_CREATED)
+
+            phone_str = ''.join(character for character in str(phone).strip() if character.isdigit())
+            if phone_str.startswith('0'):
+                phone_str = '254' + phone_str[1:]
+            elif not phone_str.startswith('254'):
+                phone_str = '254' + phone_str
+            if len(phone_str) != 12:
+                raise ValueError('Invalid phone number format. Please provide a valid Kenyan phone number.')
+
+            mpesa_view = MpesaSTKPushView()
+            access_token = mpesa_view._get_access_token()
+            account_reference = order_id
+            stk_response = mpesa_view._initiate_stk_push(
+                access_token, float(mpesa_amount), phone_str, account_reference
+            )
+            checkout_request_id = stk_response.get('CheckoutRequestID', '')
+            payment = Payment.objects.create(
+                user=request.user,
+                order_id=None,
+                amount=mpesa_amount,
+                phone_number=phone_str,
+                provider='mpesa',
+                provider_reference=checkout_request_id,
+                status=Payment.STATUS_PENDING,
+                raw_payload={
+                    'order_reference': order_id,
+                    'is_boost_checkout': True,
+                    'boost_payment_id': boost_payment.id,
+                    'boost_amount': float(boost_amount),
+                    'order_total': float(requested_total),
+                }
+            )
+            payment.mark_initiated(provider_reference=checkout_request_id)
+
+            return Response({
+                'status': 'success',
+                'payment_method': 'boost_mpesa',
+                'boost_amount': float(boost_amount),
+                'mpesa_amount': float(mpesa_amount),
+                'checkout_request_id': checkout_request_id,
+                'message': f'BOOST applied KES {boost_amount}; M-Pesa payment requested for KES {mpesa_amount}',
+            }, status=status.HTTP_200_OK)
+        except BNPLUser.DoesNotExist:
+            return Response(
+                {'detail': 'You are not enrolled in BOOST'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Order.DoesNotExist:
+            return Response(
+                {'detail': f'Order not found: {request.data.get("order_id")}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as error:
+            transaction.set_rollback(True)
+            logger.error(f'Error processing BOOST checkout: {error}', exc_info=True)
+            return Response(
+                {'detail': str(error)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -1212,6 +1332,27 @@ class MpesaCallbackView(views.APIView):
                                 logger.error(f"Error updating order payment_method: {str(e)}", exc_info=True)
                 else:
                     payment.mark_failed(payload=data, note=f'Result Code: {result_code}')
+                    payload = payment.raw_payload or {}
+                    if payload.get('is_boost_checkout'):
+                        try:
+                            boost_payment = Payment.objects.get(id=payload['boost_payment_id'])
+                            bnpl_user = BNPLUser.objects.select_for_update().get(user=payment.user)
+                            boost_amount = Decimal(str(payload.get('boost_amount', boost_payment.amount)))
+                            bnpl_user.current_balance = max(
+                                bnpl_user.current_balance - boost_amount,
+                                Decimal('0.00')
+                            )
+                            bnpl_user.save(update_fields=['current_balance', 'updated_at'])
+                            boost_payment.mark_failed(
+                                payload=data,
+                                note=f'BOOST credit released after M-Pesa failure: {result_code}'
+                            )
+                            logger.info(
+                                f'Released BOOST credit for failed checkout {checkout_request_id}: '
+                                f'{boost_amount} KES'
+                            )
+                        except (BNPLUser.DoesNotExist, Payment.DoesNotExist, KeyError) as error:
+                            logger.error(f'Unable to release BOOST credit: {error}', exc_info=True)
             
             return Response({'status': 'success'})
         except Exception as e:
