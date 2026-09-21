@@ -38,6 +38,20 @@ def send_subscription_confirmation(subscription, opted_in):
     return send_offer_sms(subscription.phone_number, message)
 
 
+def send_offer_claim_confirmation(user, offer: Offer):
+    """Confirm an offer claim by SMS."""
+    discount = (
+        f'{offer.discount_percent}% off'
+        if offer.discount_percent > 0
+        else f'KSh {offer.discount_amount} off'
+    )
+    message = (
+        f'Cache Mart: You claimed "{offer.title}" ({discount}). '
+        f'Use code {offer.code} when placing your order.'
+    )
+    return send_offer_sms(user.phone, message)
+
+
 def notify_subscribers_of_new_offer(offer: Offer):
     """Notify every active subscriber when an offer is created in admin."""
     if not getattr(settings, 'AFRICAS_TALKING_API_KEY', ''):

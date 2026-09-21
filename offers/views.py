@@ -7,7 +7,7 @@ from django.db import models
 from django.http import JsonResponse
 from .models import Offer, UserOffer, OfferNotificationSubscription
 from .serializers import OfferSerializer, UserOfferSerializer, OfferNotificationSubscriptionSerializer
-from .services import send_subscription_confirmation
+from .services import send_offer_claim_confirmation, send_subscription_confirmation
 
 class OfferViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Offer.objects.filter(is_active=True)
@@ -58,6 +58,16 @@ class OfferViewSet(viewsets.ReadOnlyModelViewSet):
         user_offer = UserOffer.objects.create(user=user, offer=offer)
         offer.current_uses += 1
         offer.save()
+
+        sms_result = send_offer_claim_confirmation(user, offer)
+        if sms_result.get('status') != 'success':
+            return Response(
+                {
+                    **UserOfferSerializer(user_offer).data,
+                    'sms_notification': 'Offer claimed, but the confirmation SMS could not be sent.',
+                },
+                status=status.HTTP_201_CREATED,
+            )
 
         return Response(
             UserOfferSerializer(user_offer).data,
