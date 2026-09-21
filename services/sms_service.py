@@ -79,6 +79,11 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 
+def format_sms_message(message):
+    """Replace line breaks with sentence-ending separators before sending."""
+    return str(message).replace('\r\n', '. ').replace('\r', '. ').replace('\n', '. ')
+
+
 def format_phone_number(phone_number):
     """
     Format phone number to international format (+254...)
@@ -155,6 +160,8 @@ class AfricasTalkingSMSService:
             dict: Response from Africa's Talking API with success/error info
         """
         try:
+            message = format_sms_message(message)
+
             # Format phone number to international format
             formatted_phone = format_phone_number(phone_number)
             
@@ -246,6 +253,8 @@ class AfricasTalkingSMSService:
             dict: Response from Africa's Talking API
         """
         try:
+            message = format_sms_message(message)
+
             # Format all phone numbers
             formatted_recipients = [format_phone_number(phone) for phone in recipients]
             # Remove None values from invalid phones
