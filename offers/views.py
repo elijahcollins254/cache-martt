@@ -7,6 +7,7 @@ from django.db import models
 from django.http import JsonResponse
 from .models import Offer, UserOffer, OfferNotificationSubscription
 from .serializers import OfferSerializer, UserOfferSerializer, OfferNotificationSubscriptionSerializer
+from .services import send_subscription_confirmation
 
 class OfferViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Offer.objects.filter(is_active=True)
@@ -92,6 +93,12 @@ class OfferSubscriptionViewSet(viewsets.ViewSet):
             return Response({'is_subscribed': False})
 
         elif request.method == 'POST':
+            if not request.user.phone:
+                return Response(
+                    {'detail': 'Add a phone number to your profile before subscribing to SMS notifications.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             subscription, created = OfferNotificationSubscription.objects.get_or_create(
                 user=request.user,
                 defaults={'phone_number': request.user.phone}
@@ -99,6 +106,15 @@ class OfferSubscriptionViewSet(viewsets.ViewSet):
             subscription.is_active = True
             subscription.phone_number = request.user.phone or subscription.phone_number
             subscription.save()
+
+            sms_result = send_subscription_confirmation(subscription, opted_in=True)
+            if sms_result.get('status') != 'success':
+                subscription.is_active = False
+                subscription.save(update_fields=['is_active', 'updated_at'])
+                return Response(
+                    {'detail': 'Your subscription could not be confirmed by SMS. Please try again later.'},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
             
             serializer = OfferNotificationSubscriptionSerializer(subscription)
             return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
@@ -112,6 +128,12 @@ class OfferSubscriptionViewSet(viewsets.ViewSet):
         if subscription:
             subscription.is_active = False
             subscription.save()
+            sms_result = send_subscription_confirmation(subscription, opted_in=False)
+            if sms_result.get('status') != 'success':
+                return Response(
+                    {'detail': 'You were unsubscribed, but the confirmation SMS could not be sent.'},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
             return Response({'detail': 'Unsubscribed from offer notifications'}, status=status.HTTP_200_OK)
         return Response({'detail': 'Not subscribed'}, status=status.HTTP_400_BAD_REQUEST)
 
