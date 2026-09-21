@@ -55,6 +55,30 @@ def notify_boost_transaction(account, boost_amount, order_reference=None):
     )
 
 
+def notify_boost_repayment(account, repayment_amount):
+    """Confirm a successful BOOST repayment by SMS."""
+    _send_sms(
+        account.phone_number,
+        (
+            f'BOOST repayment received: KES {repayment_amount:,.2f}. '
+            f'Your outstanding BOOST balance is KES {account.current_balance:,.2f}. '
+            f'Your approved BOOST limit is KES {account.credit_limit:,.2f}.'
+        ),
+    )
+
+
+def notify_boost_limit_increased(account, previous_limit):
+    """Tell a customer when their approved BOOST limit has increased."""
+    _send_sms(
+        account.phone_number,
+        (
+            f'BOOST limit increased. Your limit has grown from KES '
+            f'{previous_limit:,.2f} to KES {account.credit_limit:,.2f}. '
+            f'Keep making successful purchases and repayments to build your limit.'
+        ),
+    )
+
+
 def calculate_credit_limit(user):
     """Calculate a transparent limit from completed purchases and repayments.
 
