@@ -1,5 +1,5 @@
 {
-  "buildCommand": "pip install -r requirements.txt --quiet && python manage.py collectstatic --noinput --clear 2>&1 | tail -3",
+  "buildCommand": "pip install -r requirements.txt --quiet && if [ -n \"$DB_HOST\" ]; then python manage.py migrate --noinput; fi && python manage.py collectstatic --noinput --clear 2>&1 | tail -3",
   "builds": [
     {
       "src": "api/wsgi.py",
