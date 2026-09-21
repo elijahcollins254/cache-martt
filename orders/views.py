@@ -1420,8 +1420,21 @@ class OrderPaymentStatusView(APIView):
 
             if payments.exists():
                 payment = payments.first()
+                mpesa_payments = payments.filter(provider='mpesa')
                 payment_statuses = set(payments.values_list('status', flat=True))
-                if 'success' in payment_statuses:
+                mpesa_statuses = set(mpesa_payments.values_list('status', flat=True))
+
+                # For BOOST + M-Pesa, the order is successful only when the
+                # cash remainder has also succeeded.
+                if mpesa_payments.exists() and 'success' in mpesa_statuses:
+                    payment_status = 'success'
+                elif mpesa_payments.exists() and (
+                    'initiated' in mpesa_statuses or 'pending' in mpesa_statuses
+                ):
+                    payment_status = 'initiated'
+                elif mpesa_payments.exists():
+                    payment_status = 'failed'
+                elif 'success' in payment_statuses:
                     payment_status = 'success'
                 elif 'initiated' in payment_statuses or 'pending' in payment_statuses:
                     payment_status = 'initiated'

@@ -1280,6 +1280,7 @@ class MpesaCallbackView(views.APIView):
     permission_classes = []  # Allow unauthenticated access for M-Pesa callbacks
     authentication_classes = []
     
+    @transaction.atomic
     def post(self, request):
         """Process M-Pesa callback."""
         try:
