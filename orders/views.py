@@ -1411,17 +1411,32 @@ class OrderPaymentStatusView(APIView):
             
             # Get the latest payment for this order
             from payments.models import Payment
-            try:
-                payment = Payment.objects.filter(order_id=order.id).latest('created_at')
+            from django.db.models import Q
+
+            payments = Payment.objects.filter(
+                Q(order_id=order.id)
+                | Q(raw_payload__order_reference=order.code)
+            ).order_by('-created_at')
+
+            if payments.exists():
+                payment = payments.first()
+                payment_statuses = set(payments.values_list('status', flat=True))
+                if 'success' in payment_statuses:
+                    payment_status = 'success'
+                elif 'initiated' in payment_statuses or 'pending' in payment_statuses:
+                    payment_status = 'initiated'
+                else:
+                    payment_status = 'failed'
+
                 return Response({
-                    'status': payment.status,
-                    'message': f'Payment is {payment.status}',
+                    'status': payment_status,
+                    'message': f'Payment is {payment_status}',
                     'checkout_request_id': payment.provider_reference,
                     'order_id': order.code,
-                    'amount': float(payment.amount),
+                    'amount': float(order.actual_price or order.price or payment.amount),
                     'delivery_requested': order.delivery_requested,
                 })
-            except Payment.DoesNotExist:
+            else:
                 return Response({
                     'status': 'pending',
                     'message': 'No payment found for this order',
