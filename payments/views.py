@@ -1330,7 +1330,6 @@ class MpesaCallbackView(views.APIView):
                     elif (payment.raw_payload or {}).get('is_game_wallet', False) and payment.user:
                         # Credit the game wallet
                         try:
-                            from decimal import Decimal
                             from casino.models import GameWallet
                             
                             wallet, _ = GameWallet.objects.get_or_create(user=payment.user)
