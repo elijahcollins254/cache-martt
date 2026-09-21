@@ -8,7 +8,9 @@ from django.conf import settings
 from rest_framework import views, viewsets, permissions, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
-from .models import BNPLUser, Payment, TradeIn
+from .models import Payment, TradeIn
+from bnpl.models import BNPLAccount as BNPLUser
+from bnpl.services import refresh_credit_limit
 from .serializers import BNPLUserSerializer, TradeInSerializer
 from orders.models import Order
 
@@ -105,6 +107,7 @@ class BNPLViewSet(viewsets.GenericViewSet):
                         bnpl_user.save()
                         # Mark payment as success
                         pending_payment.mark_success(payload=result)
+                        refresh_credit_limit(bnpl_user)
                     elif result.get('result_code') != '1':  # 1 = still processing, other codes = failed
                         # Payment failed or error
                         pending_payment.mark_failed(payload=result, note=f"M-Pesa query result code: {result.get('result_code')}")
@@ -213,6 +216,7 @@ class BNPLViewSet(viewsets.GenericViewSet):
                         bnpl_user.current_balance = max(bnpl_user.current_balance, Decimal('0'))  # Ensure no negative
                         bnpl_user.save()
                         recent_payment.mark_success(payload=result)
+                        refresh_credit_limit(bnpl_user)
                         
                         return Response({
                             'has_pending_payment': False,
@@ -551,6 +555,7 @@ class BNPLViewSet(viewsets.GenericViewSet):
             # Update BNPL balance
             bnpl_user.current_balance += amount_decimal
             bnpl_user.save()
+            refresh_credit_limit(bnpl_user)
 
             # Create Payment record
             payment = Payment.objects.create(
@@ -1167,6 +1172,7 @@ class MpesaCallbackView(views.APIView):
                             bnpl_user.current_balance -= payment_amount
                             bnpl_user.current_balance = max(bnpl_user.current_balance, Decimal('0'))  # Ensure no negative
                             bnpl_user.save()
+                            refresh_credit_limit(bnpl_user)
                             logger.info(f"BNPL balance reduced for user {payment.user}: -{payment_amount}, new balance: {bnpl_user.current_balance}")
                         except BNPLUser.DoesNotExist:
                             logger.warning(f"BNPL user not found for payment user {payment.user}")

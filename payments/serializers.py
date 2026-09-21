@@ -1,6 +1,7 @@
 # payments/serializers.py
 from rest_framework import serializers
-from .models import Payment, MpesaSTKRequest, BNPLUser
+from .models import Payment, MpesaSTKRequest
+from bnpl.models import BNPLAccount as BNPLUser
 from .models import TradeIn
 from django.contrib.auth import get_user_model
 

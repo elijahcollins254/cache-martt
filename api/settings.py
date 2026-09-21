@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'orders',
     'notifications',
     'payments',
+    'bnpl',
     'riders',
     'offers',
     'subscriptions',
