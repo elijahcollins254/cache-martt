@@ -1,6 +1,8 @@
 # orders/views.py
 from django.db import models
 from django.db.models import Prefetch
+from django.utils import timezone
+from decimal import Decimal
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -8,6 +10,60 @@ from .models import Order
 from .serializers import OrderListSerializer, OrderCreateSerializer
 from users.permissions import LocationBasedPermission
 from users.models import Location
+from offers.models import UserOffer
+
+
+class ApplyOfferView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, code):
+        try:
+            order = Order.objects.get(code=code, user=request.user)
+        except Order.DoesNotExist:
+            return Response({'detail': 'Order not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if order.status != 'pending_payment':
+            return Response({'detail': 'Offers can only be applied before payment.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            user_offer = UserOffer.objects.select_related('offer').get(
+                user=request.user,
+                offer_id=request.data.get('offer_id'),
+                is_used=False,
+            )
+        except UserOffer.DoesNotExist:
+            return Response({'detail': 'This offer is not available to you.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        offer = user_offer.offer
+        if order.applied_offer_id and order.applied_offer_id != offer.id:
+            return Response({'detail': 'Another offer is already applied to this order.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        original_total = Decimal(str(order.price or order.actual_price or 0))
+        discount = Decimal('0')
+        if offer.benefit_type == 'cash_discount':
+            discount = (
+                original_total * Decimal(offer.discount_percent) / Decimal('100')
+                if offer.discount_percent > 0
+                else Decimal(str(offer.discount_amount))
+            )
+            discount = min(discount, original_total)
+
+        order.applied_offer = offer
+        order.offer_discount = discount
+        order.free_delivery = offer.benefit_type == 'free_delivery'
+        order.actual_price = original_total - discount
+        order.save(update_fields=['applied_offer', 'offer_discount', 'free_delivery', 'actual_price', 'updated_at'])
+        user_offer.is_used = True
+        user_offer.used_at = timezone.now()
+        user_offer.save(update_fields=['is_used', 'used_at'])
+
+        return Response({
+            'offer': {'id': offer.id, 'title': offer.title, 'benefit_type': offer.benefit_type},
+            'original_amount': original_total,
+            'discount': discount,
+            'payable_amount': order.actual_price,
+            'free_delivery': order.free_delivery,
+        })
 class StaffCreateOrderView(APIView):
     """
     POST -> Create a manual order for a customer (by staff)

@@ -65,6 +65,21 @@ class Order(models.Model):
         blank=True,
         help_text="Actual price paid for the order recorded by staff"
     )
+    applied_offer = models.ForeignKey(
+        'offers.Offer',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='orders_with_offer',
+        help_text="Offer claimed and applied during checkout"
+    )
+    offer_discount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+        help_text="Cash discount deducted from the order price"
+    )
+    free_delivery = models.BooleanField(default=False, help_text="Whether delivery is free for this order")
     # Payment method used for this order
     payment_method = models.CharField(
         max_length=50,

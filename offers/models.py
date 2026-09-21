@@ -3,10 +3,17 @@ from users.models import User
 from django.utils import timezone
 
 class Offer(models.Model):
+    BENEFIT_TYPES = (
+        ('cash_discount', 'Cash Discount'),
+        ('free_delivery', 'Free Delivery'),
+        ('other', 'Other'),
+    )
+
     title = models.CharField(max_length=200)
     description = models.TextField()
     discount_percent = models.IntegerField(default=0)
     discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    benefit_type = models.CharField(max_length=30, choices=BENEFIT_TYPES, default='cash_discount')
     code = models.CharField(max_length=50, unique=True)
     valid_from = models.DateTimeField(default=timezone.now)
     valid_until = models.DateTimeField(null=True, blank=True)

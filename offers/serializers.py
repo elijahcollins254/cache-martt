@@ -9,7 +9,7 @@ class OfferSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'title', 'description', 'discount_percent', 
             'discount_amount', 'code', 'valid_from', 'valid_until', 
-            'is_active', 'max_uses', 'current_uses', 'is_claimed'
+            'is_active', 'max_uses', 'current_uses', 'is_claimed', 'benefit_type'
         ]
     
     def get_is_claimed(self, obj):

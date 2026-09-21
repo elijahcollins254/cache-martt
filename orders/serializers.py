@@ -617,6 +617,9 @@ class OrderListSerializer(serializers.ModelSerializer):
             "order_items",
             "is_paid",
             "payment_method",
+            "applied_offer",
+            "offer_discount",
+            "free_delivery",
             # Manual order fields
             "order_type",
             "drop_off_type",
