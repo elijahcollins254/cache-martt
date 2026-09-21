@@ -11,7 +11,7 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from .models import Payment, TradeIn
 from bnpl.models import BNPLAccount as BNPLUser
-from bnpl.services import refresh_credit_limit
+from bnpl.services import notify_boost_opted_in, notify_boost_transaction, refresh_credit_limit
 from .serializers import BNPLUserSerializer, TradeInSerializer
 from orders.models import Order
 
@@ -307,6 +307,7 @@ class BNPLViewSet(viewsets.GenericViewSet):
                 bnpl_user.is_active = True
                 bnpl_user.phone_number = phone_number
                 bnpl_user.save()
+                notify_boost_opted_in(bnpl_user)
                 serializer = self.get_serializer(bnpl_user)
                 return Response(serializer.data)
             return Response(
@@ -315,6 +316,7 @@ class BNPLViewSet(viewsets.GenericViewSet):
             )
 
         serializer = self.get_serializer(bnpl_user)
+        notify_boost_opted_in(bnpl_user)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['post'])
@@ -573,6 +575,7 @@ class BNPLViewSet(viewsets.GenericViewSet):
                 }
             )
             payment.mark_success()
+            notify_boost_transaction(bnpl_user, amount_decimal, order_id)
 
             # Update the order's payment_method to reflect BNPL
             try:
@@ -651,6 +654,8 @@ class BNPLViewSet(viewsets.GenericViewSet):
                 }
             )
             boost_payment.mark_success()
+            if boost_amount > 0:
+                notify_boost_transaction(account, boost_amount, order_id)
 
             if mpesa_amount <= 0:
                 order = Order.objects.get(code=order_id)

@@ -11,6 +11,48 @@ SPEND_STEP = Decimal('500.00')
 ORDER_BONUS = Decimal('5.00')
 REPAYMENT_BONUS = Decimal('10.00')
 MAX_LIMIT = Decimal('1000.00')
+BOOST_REPAYMENT_DAYS = 14
+BOOST_LATE_INTEREST_RATE = Decimal('0.01')
+
+
+def _send_sms(phone_number, message):
+    """Send a BOOST SMS without making enrollment or checkout fail if SMS is unavailable."""
+    try:
+        from services.sms_service import AfricasTalkingSMSService
+
+        AfricasTalkingSMSService().send_sms(phone_number, message)
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception('Unable to send BOOST SMS')
+
+
+def notify_boost_opted_in(account):
+    """Tell a customer that BOOST has been activated for their account."""
+    _send_sms(
+        account.phone_number,
+        (
+            f'BOOST activated. Your starting purchase credit is KES '
+            f'{account.credit_limit:,.2f}. Repay within {BOOST_REPAYMENT_DAYS} days. '
+            f'Late repayment attracts {BOOST_LATE_INTEREST_RATE:.0%} interest per day '
+            f'on the outstanding balance. '
+            f'Use BOOST at checkout.'
+        ),
+    )
+
+
+def notify_boost_transaction(account, boost_amount, order_reference=None):
+    """Tell a customer how much BOOST credit was used and when it must be repaid."""
+    reference = f' for order {order_reference}' if order_reference else ''
+    _send_sms(
+        account.phone_number,
+        (
+            f'BOOST used{reference}: KES {boost_amount:,.2f} purchase credit applied. '
+            f'Repay within {BOOST_REPAYMENT_DAYS} days. Late repayment attracts '
+            f'{BOOST_LATE_INTEREST_RATE:.0%} interest per day on the outstanding balance. '
+            f'Current BOOST balance: KES {account.current_balance:,.2f}.'
+        ),
+    )
 
 
 def calculate_credit_limit(user):
