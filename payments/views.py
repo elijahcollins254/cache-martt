@@ -133,7 +133,7 @@ class BNPLViewSet(viewsets.GenericViewSet):
             return Response({
                 'status': 'success',
                 'data': serializer.data,
-                'message': 'BNPL status refreshed'
+                'message': 'BOOST status refreshed'
             })
         except BNPLUser.DoesNotExist:
             return Response({
@@ -141,7 +141,7 @@ class BNPLViewSet(viewsets.GenericViewSet):
                 'is_enrolled': False,
                 'credit_limit': 0,
                 'current_balance': 0,
-                'message': 'Not enrolled in BNPL'
+                'message': 'BOOST is not active'
             })
 
     @action(detail=False, methods=['get'])
@@ -158,10 +158,10 @@ class BNPLViewSet(viewsets.GenericViewSet):
             ).order_by('-created_at').first()
             
             if not recent_payment:
-                return Response({
-                    'has_pending_payment': False,
-                    'message': 'No pending BNPL balance payment'
-                })
+                    return Response({
+                        'has_pending_payment': False,
+                        'message': 'No pending BOOST repayment'
+                    })
             
             # If payment is already success, return success response
             if recent_payment.status == 'success':
@@ -271,7 +271,7 @@ class BNPLViewSet(viewsets.GenericViewSet):
         
         except BNPLUser.DoesNotExist:
             return Response(
-                {'detail': 'You are not enrolled in BNPL'},
+                {'detail': 'You are not enrolled in BOOST'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         except Exception as e:
@@ -309,7 +309,7 @@ class BNPLViewSet(viewsets.GenericViewSet):
                 serializer = self.get_serializer(bnpl_user)
                 return Response(serializer.data)
             return Response(
-                {'detail': 'You are already enrolled in BNPL'}, 
+                {'detail': 'You are already active on BOOST'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -328,10 +328,10 @@ class BNPLViewSet(viewsets.GenericViewSet):
                 )
             bnpl_user.is_active = False
             bnpl_user.save()
-            return Response({'detail': 'Successfully opted out of BNPL'})
+            return Response({'detail': 'Successfully opted out of BOOST'})
         except BNPLUser.DoesNotExist:
             return Response(
-                {'detail': 'You are not enrolled in BNPL'}, 
+                {'detail': 'You are not enrolled in BOOST'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -345,10 +345,10 @@ class BNPLViewSet(viewsets.GenericViewSet):
             bnpl_user = BNPLUser.objects.get(user=request.user)
             
             if bnpl_user.current_balance <= 0:
-                return Response(
-                    {'detail': 'No outstanding BNPL balance to pay'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                    return Response(
+                        {'detail': 'No outstanding BOOST balance to repay'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
             
             # Get optional custom amount from request, default to full balance
             requested_amount = request.data.get('amount')
@@ -445,7 +445,7 @@ class BNPLViewSet(viewsets.GenericViewSet):
             logger.info(f"BNPL balance payment initiated for user {request.user}: {checkout_request_id}, amount: {amount}")
             return Response({
                 'status': 'success',
-                'message': 'STK push sent to your phone to pay BNPL balance',
+                'message': 'M-Pesa prompt sent to your phone to repay your BOOST balance',
                 'checkout_request_id': stk_response.get('CheckoutRequestID'),
                 'amount': amount,
                 'balance': float(bnpl_user.current_balance)
@@ -453,7 +453,7 @@ class BNPLViewSet(viewsets.GenericViewSet):
             
         except BNPLUser.DoesNotExist:
             return Response(
-                {'detail': 'You are not enrolled in BNPL'},
+                {'detail': 'You are not enrolled in BOOST'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         except Exception as e:
@@ -529,10 +529,10 @@ class BNPLViewSet(viewsets.GenericViewSet):
             bnpl_user = BNPLUser.objects.get(user=request.user)
 
             if not bnpl_user.is_active:
-                return Response(
-                    {'detail': 'Your BNPL account is inactive'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                    return Response(
+                        {'detail': 'Your BOOST account is inactive'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
 
             # Calculate available credit (convert to Decimal for proper calculation)
             from decimal import Decimal
@@ -583,7 +583,7 @@ class BNPLViewSet(viewsets.GenericViewSet):
             serializer = self.get_serializer(bnpl_user)
             return Response(
                 {
-                    'detail': 'BNPL payment processed successfully',
+                    'detail': 'BOOST purchase credit approved successfully',
                     'bnpl_status': serializer.data,
                     'payment_id': payment.id
                 },
@@ -592,7 +592,7 @@ class BNPLViewSet(viewsets.GenericViewSet):
 
         except BNPLUser.DoesNotExist:
             return Response(
-                {'detail': 'You are not enrolled in BNPL. Please enroll first.'},
+                {'detail': 'You are not active on BOOST. Please activate it first.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         except Exception as e:
