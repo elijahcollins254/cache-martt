@@ -25,10 +25,22 @@ class ApplyOfferView(APIView):
         if order.status != 'pending_payment':
             return Response({'detail': 'Offers can only be applied before payment.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        requested_offer_id = request.data.get('offer_id')
+        if order.applied_offer_id and str(order.applied_offer_id) == str(requested_offer_id):
+            offer = order.applied_offer
+            original_total = Decimal(str(order.price or order.actual_price or 0))
+            return Response({
+                'offer': {'id': offer.id, 'title': offer.title, 'benefit_type': offer.benefit_type},
+                'original_amount': original_total,
+                'discount': order.offer_discount,
+                'payable_amount': order.actual_price,
+                'free_delivery': order.free_delivery,
+            })
+
         try:
             user_offer = UserOffer.objects.select_related('offer').get(
                 user=request.user,
-                offer_id=request.data.get('offer_id'),
+                offer_id=requested_offer_id,
                 is_used=False,
             )
         except UserOffer.DoesNotExist:
@@ -1502,7 +1514,13 @@ class OrderPaymentStatusView(APIView):
                     'message': f'Payment is {payment_status}',
                     'checkout_request_id': payment.provider_reference,
                     'order_id': order.code,
-                    'amount': float(order.actual_price or order.price or payment.amount),
+                    'amount': float(
+                        order.actual_price
+                        if order.actual_price is not None
+                        else order.price
+                        if order.price is not None
+                        else payment.amount
+                    ),
                     'delivery_requested': order.delivery_requested,
                 })
             else:

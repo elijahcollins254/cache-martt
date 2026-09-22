@@ -6,6 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from django.conf import settings
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import views, viewsets, permissions, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
@@ -63,12 +64,13 @@ def activate_paid_order(order, payment_method):
 
         services = ', '.join(service.name for service in order.services.all()) or 'N/A'
         customer_phone = order.user.phone if order.user and order.user.phone else None
+        payable_amount = order.actual_price if order.actual_price is not None else order.price
         message = (
             f"CACHE INDUSTRIES\n"
             f"Payment Confirmed!\n"
             f"Order #: {order.code}\n"
             f"Services: {services}\n"
-            f"Amount: KES {order.actual_price or order.price}\n"
+            f"Amount: KES {payable_amount}\n"
             f"View: https://www.cache.co.ke/orders/{order.code}"
         )
         sms_service = AfricasTalkingSMSService()
@@ -78,6 +80,71 @@ def activate_paid_order(order, payment_method):
             sms_service.send_sms(settings.ADMIN_PHONE_NUMBER, message.replace('Payment Confirmed!', 'PAID ONLINE ORDER!'))
     except Exception:
         logger.exception("Failed to send paid-order SMS for %s", order.code)
+
+
+class ZeroPaymentCompletionView(views.APIView):
+    """Complete an order whose applied offer reduces its payable amount to zero."""
+
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, code):
+        try:
+            order = Order.objects.select_for_update().get(code=code, user=request.user)
+        except Order.DoesNotExist:
+            return Response({'detail': 'Order not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        existing_payment = Payment.objects.filter(
+            order_id=order.id,
+            provider='offer',
+            status=Payment.STATUS_SUCCESS,
+        ).first()
+        if existing_payment:
+            return Response({
+                'status': 'success',
+                'message': 'Order already completed.',
+                'order_id': order.code,
+            })
+
+        if order.status != 'pending_payment':
+            return Response(
+                {'detail': 'This order is no longer awaiting payment.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not order.applied_offer_id:
+            return Response(
+                {'detail': 'Apply an offer before completing a zero-payment order.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        payable_amount = order.actual_price if order.actual_price is not None else order.price
+        if payable_amount is None or payable_amount > 0:
+            return Response(
+                {'detail': 'This order still has a balance to pay.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        payment = Payment.objects.create(
+            user=request.user,
+            order_id=order.id,
+            provider='offer',
+            provider_reference=f'offer-{order.code}',
+            amount=0,
+            phone_number=str(request.user.phone or 'N/A'),
+            status=Payment.STATUS_SUCCESS,
+            initiated_at=timezone.now(),
+            completed_at=timezone.now(),
+            raw_payload={'offer_id': order.applied_offer_id, 'zero_payment': True},
+            notes='Completed with applied offer.',
+        )
+        activate_paid_order(order, 'offer')
+
+        return Response({
+            'status': payment.status,
+            'message': 'Payment completed successfully. Your order is being processed.',
+            'order_id': order.code,
+        })
 
 class BNPLViewSet(viewsets.GenericViewSet):
     authentication_classes = [TokenAuthentication]
