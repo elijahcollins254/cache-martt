@@ -470,11 +470,20 @@ class OrderUpdateView(APIView):
                 if order.delivery_rider_id != request.user.id and order.pickup_rider_id != request.user.id and order.rider_id != request.user.id:
                     return Response({'error': 'This delivery is not assigned to you.'}, status=status.HTTP_403_FORBIDDEN)
 
+                if order.gate_notified_at:
+                    return Response({
+                        'message': 'The customer was already notified that the rider is at the gate.',
+                        'already_notified': True,
+                    })
+
                 if not order.delivery_code_hash:
                     delivery_code = order.generate_delivery_code()
                     send_customer_delivery_code_sms(order, delivery_code)
                 send_gate_arrival_sms(order)
-                return Response({'message': 'Customer has been notified that the rider is at the gate.'})
+                return Response({
+                    'message': 'Customer has been notified that the rider is at the gate.',
+                    'already_notified': False,
+                })
 
             # A rider may accept only one delivery at a time.
             if request.data.get('status') == 'accepted_delivery':
