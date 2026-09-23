@@ -1072,6 +1072,7 @@ class OrderListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         queryset = super().get_queryset()
         user = self.request.user
+        is_admin = user.is_superuser or getattr(user, 'role', None) == 'admin'
         
         # Optimize queries with selective loading
         # Defer heavy text fields that aren't needed for list view
@@ -1088,7 +1089,7 @@ class OrderListCreateView(generics.ListCreateAPIView):
             return queryset.filter(code__iexact=code.strip())
 
         # For staff users, filter by their service location
-        if user.is_authenticated and user.is_staff and not user.is_superuser:
+        if user.is_authenticated and user.is_staff and not is_admin:
             print(f"\n[DEBUG Orders] Staff user: {user.username} (ID: {user.id})")
             print(f"[DEBUG Orders] Staff service_location: {user.service_location} (ID: {user.service_location.id if user.service_location else 'None'})")
             
@@ -1102,7 +1103,7 @@ class OrderListCreateView(generics.ListCreateAPIView):
                 print(f"[DEBUG Orders] ⚠️ Staff has no service_location assigned, returning no orders")
                 return Order.objects.none()
         # For regular users, show only their orders
-        elif user.is_authenticated and not user.is_staff:
+        elif user.is_authenticated and not user.is_staff and not is_admin:
             queryset = queryset.filter(user=user)
         
         # === BACKEND FILTERING SUPPORT (for performance optimization) ===

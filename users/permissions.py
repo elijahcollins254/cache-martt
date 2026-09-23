@@ -7,7 +7,7 @@ class LocationBasedPermission(permissions.BasePermission):
     
     def has_permission(self, request, view):
         # Superusers have full access
-        if request.user.is_superuser:
+        if request.user.is_superuser or getattr(request.user, 'role', None) == 'admin':
             return True
             
         # Staff must have a service location assigned
@@ -18,7 +18,7 @@ class LocationBasedPermission(permissions.BasePermission):
 
     def has_object_permission(self, request, view, obj):
         # Superusers have full access
-        if request.user.is_superuser:
+        if request.user.is_superuser or getattr(request.user, 'role', None) == 'admin':
             return True
             
         # Non-staff users can only access their own data
