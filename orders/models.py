@@ -1,9 +1,12 @@
 # orders/models.py
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 from services.models import Service
 from users.models import Location
 from decimal import Decimal
+import hashlib
+import random
 import uuid
 
 class Order(models.Model):
@@ -98,6 +101,9 @@ class Order(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     estimated_delivery = models.DateTimeField(null=True, blank=True)
     delivered_at = models.DateTimeField(null=True, blank=True)  # helpful to record real delivery time
+    delivery_code_hash = models.CharField(max_length=128, null=True, blank=True)
+    delivery_code_sent_at = models.DateTimeField(null=True, blank=True)
+    gate_notified_at = models.DateTimeField(null=True, blank=True)
     
     # --- RIDER TRACKING (SEPARATE PICKUP & DELIVERY) ---
     # Original rider field kept for backward compatibility
@@ -452,6 +458,22 @@ class Order(models.Model):
             order_id=self.id,
             status=Payment.STATUS_SUCCESS
         ).exists()
+
+    def _hash_delivery_code(self, raw_code):
+        return hashlib.sha256(str(raw_code).strip().encode('utf-8')).hexdigest()
+
+    def generate_delivery_code(self):
+        """Generate a 4-digit customer delivery code and store its hash."""
+        code = f"{random.randint(1000, 9999):04d}"
+        self.delivery_code_hash = self._hash_delivery_code(code)
+        self.delivery_code_sent_at = timezone.now()
+        self.save(update_fields=['delivery_code_hash', 'delivery_code_sent_at', 'updated_at'])
+        return code
+
+    def verify_delivery_code(self, raw_code):
+        if not raw_code or not self.delivery_code_hash:
+            return False
+        return self._hash_delivery_code(raw_code) == self.delivery_code_hash
 
     def __str__(self):
         return f"Order #{self.id} - {self.user.username if self.user else 'Guest'}"

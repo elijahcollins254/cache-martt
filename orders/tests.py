@@ -1,3 +1,71 @@
 from django.test import TestCase
+from django.contrib.auth import get_user_model
+from decimal import Decimal
 
-# Create your tests here.
+from orders.models import Order
+from services.models import Service
+from users.models import Location
+
+User = get_user_model()
+
+
+class OrderDeliveryVerificationTests(TestCase):
+    def setUp(self):
+        self.location = Location.objects.create(name='Test Location')
+        self.customer = User.objects.create_user(
+            username='customer_user',
+            email='customer@example.com',
+            password='secret123',
+            role='customer',
+            phone='+254712345678',
+        )
+        self.rider = User.objects.create_user(
+            username='delivery_rider',
+            email='rider@example.com',
+            password='secret123',
+            role='rider',
+            phone='+254700123456',
+        )
+        self.service = Service.objects.create(
+            name='Laundry Delivery',
+            description='Test service',
+            price=Decimal('1000.00'),
+        )
+
+    def test_delivery_code_is_generated_and_verified(self):
+        order = Order.objects.create(
+            user=self.customer,
+            pickup_address='Main Road',
+            dropoff_address='Gate B',
+            status='accepted_delivery',
+            delivery_rider=self.rider,
+            price=Decimal('2500.00'),
+            service_location=self.location,
+        )
+        order.services.add(self.service)
+
+        code = order.generate_delivery_code()
+
+        self.assertTrue(code.isdigit())
+        self.assertEqual(len(code), 4)
+        self.assertTrue(order.verify_delivery_code(code))
+        self.assertFalse(order.verify_delivery_code('0000'))
+
+    def test_delivery_code_is_not_reused_after_new_generation(self):
+        order = Order.objects.create(
+            user=self.customer,
+            pickup_address='Main Road',
+            dropoff_address='Gate B',
+            status='accepted_delivery',
+            delivery_rider=self.rider,
+            price=Decimal('2500.00'),
+            service_location=self.location,
+        )
+        order.services.add(self.service)
+
+        first_code = order.generate_delivery_code()
+        second_code = order.generate_delivery_code()
+
+        self.assertNotEqual(first_code, second_code)
+        self.assertTrue(order.verify_delivery_code(second_code))
+        self.assertFalse(order.verify_delivery_code(first_code))

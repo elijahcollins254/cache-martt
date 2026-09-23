@@ -59,6 +59,53 @@ def send_rider_assignment_sms(order, rider):
         print(f"⚠ Error sending rider SMS: {str(sms_error)}")
 
 
+def send_customer_delivery_code_sms(order, delivery_code):
+    """Send the 4-digit customer validation code during the delivery phase."""
+    if not order.user or not getattr(order.user, 'phone', None):
+        return {'status': 'skipped', 'message': 'No customer phone to send code to.'}
+
+    try:
+        from services.sms_service import AfricasTalkingSMSService
+        message = (
+            f"CACHE INDUSTRIES\n"
+            f"Delivery Code\n"
+            f"Order #: {order.code}\n"
+            f"Your delivery code is {delivery_code}. Please give this to the rider when they arrive."
+        )
+        result = AfricasTalkingSMSService().send_sms(order.user.phone, message)
+        if result and result.get('status') == 'success':
+            print(f"✓ Delivery code SMS sent to customer for order {order.code}")
+            return result
+        return result if result else {'status': 'error', 'message': 'No response from SMS service'}
+    except Exception as sms_error:
+        print(f"⚠ Error sending delivery code SMS: {str(sms_error)}")
+        return {'status': 'error', 'message': str(sms_error)}
+
+
+def send_gate_arrival_sms(order):
+    """Notify the customer that the rider is at the gate and remind them to share the delivery code."""
+    if not order.user or not getattr(order.user, 'phone', None):
+        return {'status': 'skipped', 'message': 'No customer phone to notify.'}
+
+    try:
+        from services.sms_service import AfricasTalkingSMSService
+        message = (
+            f"CACHE INDUSTRIES\n"
+            f"Your rider has reached the gate for order {order.code}.\n"
+            f"Please share the delivery code you received from us with the rider to confirm delivery."
+        )
+        result = AfricasTalkingSMSService().send_sms(order.user.phone, message)
+        if result and result.get('status') == 'success':
+            order.gate_notified_at = timezone.now()
+            order.save(update_fields=['gate_notified_at', 'updated_at'])
+            print(f"✓ Gate SMS sent to customer for order {order.code}")
+            return result
+        return result if result else {'status': 'error', 'message': 'No response from SMS service'}
+    except Exception as sms_error:
+        print(f"⚠ Error sending gate SMS: {str(sms_error)}")
+        return {'status': 'error', 'message': str(sms_error)}
+
+
 class ApplyOfferView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -418,6 +465,17 @@ class OrderUpdateView(APIView):
 
             order = Order.objects.get(id=order_id)
 
+            action = request.data.get('action')
+            if action == 'notify_gate':
+                if order.delivery_rider_id != request.user.id and order.pickup_rider_id != request.user.id and order.rider_id != request.user.id:
+                    return Response({'error': 'This delivery is not assigned to you.'}, status=status.HTTP_403_FORBIDDEN)
+
+                if not order.delivery_code_hash:
+                    delivery_code = order.generate_delivery_code()
+                    send_customer_delivery_code_sms(order, delivery_code)
+                send_gate_arrival_sms(order)
+                return Response({'message': 'Customer has been notified that the rider is at the gate.'})
+
             # A rider may accept only one delivery at a time.
             if request.data.get('status') == 'accepted_delivery':
                 has_active_delivery = Order.objects.filter(
@@ -442,6 +500,9 @@ class OrderUpdateView(APIView):
                     )
 
                 order.delivery_rider = request.user
+                if not order.delivery_code_hash:
+                    delivery_code = order.generate_delivery_code()
+                    send_customer_delivery_code_sms(order, delivery_code)
             
             # Check if the staff member has permission for this location
             # Allow: superusers, or staff with matching service_location, or any staff with washer/folder role
@@ -463,6 +524,14 @@ class OrderUpdateView(APIView):
                     {'error': f'Cannot transition from {old_status} to {new_status}'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
+
+            if new_status and new_status.lower() == 'delivered':
+                delivered_code = str(request.data.get('delivery_code') or '').strip()
+                if not order.verify_delivery_code(delivered_code):
+                    return Response(
+                        {'error': 'A valid customer delivery code is required before marking this order as delivered.'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
             
             status_changed_to_ready = new_status and new_status.lower() == 'ready' and old_status.lower() != 'ready'
             status_changed_to_picked = new_status and new_status.lower() == 'picked' and old_status.lower() != 'picked'
