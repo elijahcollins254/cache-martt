@@ -430,11 +430,18 @@ class OrderUpdateView(APIView):
                         status=status.HTTP_409_CONFLICT,
                     )
 
-                if order.delivery_rider_id != request.user.id:
+                is_assigned_rider = (
+                    order.delivery_rider_id == request.user.id or
+                    order.pickup_rider_id == request.user.id or
+                    order.rider_id == request.user.id
+                )
+                if not is_assigned_rider:
                     return Response(
                         {'error': 'This delivery is not assigned to you.'},
                         status=status.HTTP_403_FORBIDDEN,
                     )
+
+                order.delivery_rider = request.user
             
             # Check if the staff member has permission for this location
             # Allow: superusers, or staff with matching service_location, or any staff with washer/folder role
