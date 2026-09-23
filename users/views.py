@@ -53,6 +53,24 @@ def log_activity(user, action, description='', request=None, admin_user=None, ch
         print(f"Failed to log activity: {str(e)}")
 
 
+def send_signup_sms(user):
+    """Send a welcome message after a user account is created."""
+    if not user.phone:
+        return
+
+    try:
+        from services.sms_service import AfricasTalkingSMSService
+
+        first_name = user.first_name or user.username
+        message = (
+            f"Welcome to Cache Mart, {first_name}! Your account was created successfully. "
+            "You can now log in and start shopping."
+        )
+        AfricasTalkingSMSService().send_sms(user.phone, message)
+    except Exception as e:
+        print(f"Failed to send signup SMS: {str(e)}")
+
+
 from django.views.decorators.csrf import ensure_csrf_cookie
 
 @ensure_csrf_cookie
@@ -163,6 +181,10 @@ class UserViewSet(viewsets.ModelViewSet):
         if self.action == 'create':
             return UserCreateSerializer
         return UserSerializer
+
+    def perform_create(self, serializer):
+        user = serializer.save()
+        send_signup_sms(user)
     
     def partial_update(self, request, *args, **kwargs):
         """
@@ -315,6 +337,7 @@ class RegisterView(APIView):
         serializer = UserCreateSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
+            send_signup_sms(user)
             return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
