@@ -368,7 +368,7 @@ class RiderOrderListView(generics.ListAPIView):
                 Q(rider=user) |  # Old field for backward compatibility
                 Q(pickup_rider=user) |  # New pickup rider field
                 Q(delivery_rider=user),  # New delivery rider field
-                status__in=['requested', 'assigned_pickup', 'picked', 'in_progress', 'washed', 'folded', 'ready', 'assigned_delivery', 'accepted_delivery', 'delivered']
+                status__in=['requested', 'assigned_pickup', 'picked', 'in_progress', 'washed', 'folded', 'ready', 'pending_delivery', 'assigned_delivery', 'accepted_delivery', 'delivered']
             ).exclude(
                 services__name__in=excluded_services
             ).distinct().select_related('user', 'service', 'rider', 'pickup_rider', 'delivery_rider', 'service_location').prefetch_related('services').order_by('-created_at')
