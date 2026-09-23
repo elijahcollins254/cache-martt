@@ -46,7 +46,7 @@ def send_rider_assignment_sms(order, rider):
             f"Items: {order.items}\n"
             f"Price: KES {order.price or 'TBD'}\n"
             f"Est. Delivery: {estimated_delivery}\n"
-            f"Accept: https://www.cache.co.ke/rider/orders/{order.code}"
+            f"Accept: https://www.cache.co.ke/rider/order/{order.code}"
         )
         result = AfricasTalkingSMSService().send_sms(rider_phone, message)
 
@@ -1393,7 +1393,7 @@ class OrderListCreateView(generics.ListCreateAPIView):
                         from django.utils import timezone
                         print(f"[DEBUG] Attempting to send SMS to rider {order.rider.username} at {rider_phone}")
                         sms_service = AfricasTalkingSMSService()
-                        rider_url = f"https://www.cache.co.ke/rider/orders/{order.code}"
+                        rider_url = f"https://www.cache.co.ke/rider/order/{order.code}"
                         
                         # Extract clean pickup address and calculate hours for estimated delivery
                         clean_pickup = order.pickup_address.split('(contact:')[0].strip() if order.pickup_address else 'N/A'
@@ -1599,7 +1599,7 @@ class RequestDeliveryView(APIView):
                     # Extract clean pickup address
                     clean_pickup = order.pickup_address.split('(contact:')[0].strip() if order.pickup_address else 'N/A'
                     
-                    rider_url = f"https://www.cache.co.ke/rider/orders/{order.code}"
+                    rider_url = f"https://www.cache.co.ke/rider/order/{order.code}"
                     rider_message = (
                         f"Delivery Request!\n"
                         f"Order #: {order.code}\n"
