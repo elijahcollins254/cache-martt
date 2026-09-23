@@ -32,7 +32,7 @@ def send_subscription_confirmation(subscription, opted_in):
     """Confirm an offer-notification subscription change by SMS."""
     action = 'subscribed to' if opted_in else 'unsubscribed from'
     message = (
-        f"Cache Mart: You have successfully {action} new offer SMS notifications. "
+        f"CACHE INDUSTRIES: You have successfully {action} new offer SMS notifications. "
         "You can change this anytime from your profile."
     )
     return send_offer_sms(subscription.phone_number, message)
@@ -46,7 +46,7 @@ def send_offer_claim_confirmation(user, offer: Offer):
         else f'KSh {offer.discount_amount} off'
     )
     message = (
-        f'Cache Mart: You claimed "{offer.title}" ({discount}). '
+        f'CACHE INDUSTRIES: You claimed "{offer.title}" ({discount}). '
         f'Use code {offer.code} when placing your order.'
     )
     return send_offer_sms(user.phone, message)
@@ -59,9 +59,9 @@ def notify_subscribers_of_new_offer(offer: Offer):
         return {'sent': 0, 'failed': 0, 'skipped': True}
 
     message = (
-        f"Cache Mart new offer: {offer.title}. "
+        f"CACHE INDUSTRIES new offer: {offer.title}. "
         f"{offer.discount_percent}% off" if offer.discount_percent > 0
-        else f"Cache Mart new offer: {offer.title}. KSh {offer.discount_amount} off"
+        else f"CACHE INDUSTRIES new offer: {offer.title}. KSh {offer.discount_amount} off"
     )
     message = f"{message}. Code: {offer.code}. Visit cache.co.ke/offers"
 

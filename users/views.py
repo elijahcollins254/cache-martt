@@ -63,7 +63,7 @@ def send_signup_sms(user):
 
         first_name = user.first_name or user.username
         message = (
-            f"Welcome to Cache Mart, {first_name}! Your account was created successfully. "
+            f"Welcome to CACHE INDUSTRIES, {first_name}! Your account was created successfully. "
             "You can now log in and start shopping."
         )
         AfricasTalkingSMSService().send_sms(user.phone, message)
