@@ -368,7 +368,7 @@ class RiderOrderListView(generics.ListAPIView):
                 Q(rider=user) |  # Old field for backward compatibility
                 Q(pickup_rider=user) |  # New pickup rider field
                 Q(delivery_rider=user),  # New delivery rider field
-                status__in=['requested', 'assigned_pickup', 'picked', 'in_progress', 'washed', 'folded', 'ready', 'assigned_delivery', 'delivered']
+                status__in=['requested', 'assigned_pickup', 'picked', 'in_progress', 'washed', 'folded', 'ready', 'assigned_delivery', 'accepted_delivery', 'delivered']
             ).exclude(
                 services__name__in=excluded_services
             ).distinct().select_related('user', 'service', 'rider', 'pickup_rider', 'delivery_rider', 'service_location').prefetch_related('services').order_by('-created_at')
@@ -417,6 +417,24 @@ class OrderUpdateView(APIView):
                 return Response({'error': 'Order ID is required'}, status=status.HTTP_400_BAD_REQUEST)
 
             order = Order.objects.get(id=order_id)
+
+            # A rider may accept only one delivery at a time.
+            if request.data.get('status') == 'accepted_delivery':
+                has_active_delivery = Order.objects.filter(
+                    delivery_rider=request.user,
+                    status='accepted_delivery',
+                ).exclude(id=order.id).exists()
+                if has_active_delivery:
+                    return Response(
+                        {'error': 'You already have an active delivery. Mark it as delivered before accepting another.'},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+
+                if order.delivery_rider_id != request.user.id:
+                    return Response(
+                        {'error': 'This delivery is not assigned to you.'},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
             
             # Check if the staff member has permission for this location
             # Allow: superusers, or staff with matching service_location, or any staff with washer/folder role

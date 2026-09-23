@@ -22,6 +22,7 @@ class Order(models.Model):
         ('ready', 'Ready for Delivery'),
         ('pending_delivery', 'Pending Delivery Assignment'),  # Awaiting delivery rider
         ('assigned_delivery', 'Assigned for Delivery'),       # Delivery rider assigned
+        ('accepted_delivery', 'Accepted for Delivery'),       # Delivery rider accepted
         ('delivered', 'Delivered'),
         # Other
         ('cancelled', 'Cancelled'),
@@ -412,7 +413,8 @@ class Order(models.Model):
         'folded': ['ready', 'cancelled'],
         'ready': ['pending_delivery', 'cancelled'],
         'pending_delivery': ['assigned_delivery', 'cancelled'],
-        'assigned_delivery': ['delivered', 'cancelled'],
+        'assigned_delivery': ['accepted_delivery', 'cancelled'],
+        'accepted_delivery': ['delivered', 'cancelled'],
         'delivered': ['cancelled'],
         'cancelled': [],
     }
