@@ -13,6 +13,52 @@ from users.models import Location
 from offers.models import UserOffer
 
 
+def send_rider_assignment_sms(order, rider):
+    """Notify an assigned rider by SMS without blocking the order update."""
+    rider_phone = getattr(rider, 'phone', None)
+    if not rider_phone or not str(rider_phone).strip():
+        print(f"⚠ No phone number found for rider {rider.username}")
+        return
+
+    try:
+        from django.utils import timezone
+        from services.sms_service import AfricasTalkingSMSService
+
+        services = ', '.join([service.name for service in order.services.all()]) if order.services.exists() else 'N/A'
+        user_name = order.user.get_full_name() or order.user.username if order.user else order.customer_name or 'Customer'
+        user_phone = (order.user.phone if order.user and order.user.phone else None) or order.customer_phone or None
+        clean_pickup = order.pickup_address.split('(contact:')[0].strip() if order.pickup_address else 'N/A'
+        if order.estimated_delivery:
+            hours_diff = (order.estimated_delivery - timezone.now()).total_seconds() / 3600
+            estimated_delivery = f"{int(hours_diff)}hrs" if hours_diff > 0 else 'TBD'
+        else:
+            estimated_delivery = 'TBD'
+
+        message = (
+            f"CACHE INDUSTRIES\n"
+            f"New Order Assigned!\n"
+            f"Order #: {order.code}\n"
+            f"Customer: {user_name}\n"
+            f"Phone: {user_phone or 'N/A'}\n"
+            f"Pickup: {clean_pickup}\n"
+            f"Dropoff: {order.dropoff_address}\n"
+            f"Products: {services}\n"
+            f"Items: {order.items}\n"
+            f"Price: KES {order.price or 'TBD'}\n"
+            f"Est. Delivery: {estimated_delivery}\n"
+            f"Accept: https://www.cache.co.ke/rider/orders/{order.code}"
+        )
+        result = AfricasTalkingSMSService().send_sms(rider_phone, message)
+
+        if result and result.get('status') == 'success':
+            print(f"✓ Rider SMS sent to {rider.username} ({rider_phone}) for order {order.code}")
+        else:
+            error_msg = result.get('message', 'Unknown error') if result else 'No response'
+            print(f"⚠ Failed to send rider SMS to {rider.username}: {error_msg}")
+    except Exception as sms_error:
+        print(f"⚠ Error sending rider SMS: {str(sms_error)}")
+
+
 class ApplyOfferView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -454,6 +500,7 @@ class OrderUpdateView(APIView):
                         notification_type='new_order'
                     )
                     print(f"✓ Notification sent to pickup rider {rider.username} for order {order.code}")
+                    send_rider_assignment_sms(order, rider)
 
                 except Exception as e:
                     print(f"⚠ Error assigning pickup rider: {str(e)}")
@@ -480,6 +527,7 @@ class OrderUpdateView(APIView):
                         notification_type='new_order'
                     )
                     print(f"✓ Notification sent to delivery rider {rider.username} for order {order.code}")
+                    send_rider_assignment_sms(order, rider)
 
                 except Exception as e:
                     print(f"⚠ Error assigning delivery rider: {str(e)}")
@@ -515,78 +563,10 @@ class OrderUpdateView(APIView):
                         notification_type='new_order'
                     )
                     print(f"✓ Notification sent to rider {rider.username} for order {order.code}")
+                    send_rider_assignment_sms(order, rider)
 
                 except Exception as e:
                     print(f"⚠ Error assigning rider: {str(e)}")
-
-                    # Send notification to the newly assigned rider
-                    from notifications.models import Notification
-                    message = f"Order {order.code} assigned to you. Pickup: {order.pickup_address[:50]}..."
-                    Notification.objects.create(
-                        user=rider,
-                        order=order,
-                        message=message,
-                        notification_type='new_order'
-                    )
-                    print(f"✓ Notification sent to rider {rider.username} for order {order.code}")
-
-                    # Send SMS to the newly assigned rider
-                    try:
-                        from django.conf import settings
-                        from services.sms_service import AfricasTalkingSMSService, format_phone_number
-                        from django.utils import timezone
-
-                        rider_phone = rider.phone if hasattr(rider, 'phone') and rider.phone else None
-                        rider_phone = None if rider_phone and not str(rider_phone).strip() else rider_phone
-
-                        if rider_phone and str(rider_phone).strip():
-                            sms_service = AfricasTalkingSMSService()
-                            rider_url = f"https://www.cache.co.ke/rider/orders/{order.code}"
-
-                            # Format services list
-                            services = ', '.join([s.name for s in order.services.all()]) if order.services.exists() else 'N/A'
-                            user_name = order.user.get_full_name() or order.user.username if order.user else order.customer_name or 'Customer'
-                            user_phone = (order.user.phone if order.user and order.user.phone else None) or \
-                                       (order.customer_phone if order.customer_phone else None) or None
-
-                            # Extract clean pickup address and calculate hours for estimated delivery
-                            clean_pickup = order.pickup_address.split('(contact:')[0].strip() if order.pickup_address else 'N/A'
-                            if order.estimated_delivery:
-                                hours_diff = (order.estimated_delivery - timezone.now()).total_seconds() / 3600
-                                est_time = f"{int(hours_diff)}hrs" if hours_diff > 0 else 'TBD'
-                            else:
-                                est_time = 'TBD'
-
-                            rider_message = (
-                                f"CACHE INDUSTRIES\n"
-                                f"New Order Assigned!\n"
-                                f"Order #: {order.code}\n"
-                                f"Customer: {user_name}\n"
-                                f"Phone: {user_phone or 'N/A'}\n"
-                                f"Pickup: {clean_pickup}\n"
-                                f"Dropoff: {order.dropoff_address}\n"
-                                f"Products: {services}\n"
-                                f"Items: {order.items}\n"
-                                f"Price: KES {order.price or 'TBD'}\n"
-                                f"Est. Delivery: {est_time}\n"
-                                f"Accept: {rider_url}"
-                            )
-
-                            formatted_phone = format_phone_number(rider_phone)
-                            result = sms_service.send_sms(formatted_phone, rider_message)
-
-                            if result and result.get('status') == 'success':
-                                print(f"✓ Rider SMS sent to {rider.username} ({formatted_phone}) for order {order.code}")
-                            else:
-                                error_msg = result.get('message', 'Unknown error') if result else 'No response'
-                                print(f"⚠ Failed to send rider SMS to {rider.username}: {error_msg}")
-                        else:
-                            print(f"⚠ No phone number found for rider {rider.username}")
-
-                    except Exception as sms_error:
-                        print(f"⚠ Error sending rider SMS: {str(sms_error)}")
-                        import traceback
-                        traceback.print_exc()
 
                 except User.DoesNotExist:
                     return Response({'error': 'Invalid rider selected'}, status=status.HTTP_400_BAD_REQUEST)
