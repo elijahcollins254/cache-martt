@@ -1068,8 +1068,21 @@ class OrderListCreateView(generics.ListCreateAPIView):
         if code:
             return queryset.filter(code__iexact=code.strip())
 
+        # Riders should see only orders assigned through any rider field.
+        # Keep this before the staff location filter because riders may also
+        # have staff privileges, but must not receive every order at a location.
+        is_rider = user.is_authenticated and (
+            getattr(user, 'role', None) == 'rider' or
+            getattr(user, 'staff_type', None) == 'rider'
+        )
+        if is_rider:
+            queryset = queryset.filter(
+                models.Q(rider=user) |
+                models.Q(pickup_rider=user) |
+                models.Q(delivery_rider=user)
+            ).distinct()
         # For staff users, filter by their service location
-        if user.is_authenticated and user.is_staff and not is_admin:
+        elif user.is_authenticated and user.is_staff and not is_admin:
             print(f"\n[DEBUG Orders] Staff user: {user.username} (ID: {user.id})")
             print(f"[DEBUG Orders] Staff service_location: {user.service_location} (ID: {user.service_location.id if user.service_location else 'None'})")
             
