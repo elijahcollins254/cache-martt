@@ -6,6 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q, Sum
 from django.utils import timezone
 from rest_framework import views, viewsets, permissions, status
 from rest_framework.response import Response
@@ -28,8 +29,64 @@ from rest_framework.permissions import IsAuthenticated
 logger = logging.getLogger(__name__)
 
 
+def get_order_payment_progress(order):
+    total = order.actual_price or order.get_latest_staff_price() or order.price
+    paid = Payment.objects.filter(
+        Q(order_id=order.id) | Q(raw_payload__order_reference=order.code),
+        status=Payment.STATUS_SUCCESS,
+    ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
+    total = Decimal(str(total)) if total is not None else None
+    remaining = max(total - paid, Decimal('0')) if total is not None else None
+    return total, paid, remaining
+
+
+def notify_partially_paid_order(order, remaining):
+    """Tell the customer and admins that fulfillment is blocked by a balance."""
+    message = (
+        f"Order {order.code} is partially paid. KES {remaining:,.2f} remains "
+        "before your order can be placed and delivery can start."
+    )
+    try:
+        from notifications.models import Notification
+        from django.contrib.auth import get_user_model
+
+        if order.user:
+            Notification.objects.create(user=order.user, order=order, message=message, notification_type='order_update')
+        User = get_user_model()
+        for admin in User.objects.filter(is_staff=True, is_active=True):
+            Notification.objects.create(
+                user=admin,
+                order=order,
+                message=f"{message} Customer: {order.user.username if order.user else 'Guest'}.",
+                notification_type='order_update',
+            )
+    except Exception:
+        logger.exception("Failed to create partial-payment notifications for %s", order.code)
+
+    try:
+        from django.conf import settings
+        from services.sms_service import AfricasTalkingSMSService, format_phone_number
+        sms_service = AfricasTalkingSMSService()
+        customer_phone = order.user.phone if order.user and order.user.phone else order.customer_phone
+        if customer_phone:
+            sms_service.send_sms(format_phone_number(customer_phone), f"CACHE INDUSTRIES\n{message}")
+        if settings.ADMIN_PHONE_NUMBER:
+            sms_service.send_sms(settings.ADMIN_PHONE_NUMBER, f"CACHE INDUSTRIES\n{message}")
+    except Exception:
+        logger.exception("Failed to send partial-payment SMS for %s", order.code)
+
+
 def activate_paid_order(order, payment_method):
-    """Move a paid online order into the normal workflow and notify parties."""
+    """Activate only fully paid orders; otherwise keep them partially paid."""
+    _total, _paid, remaining = get_order_payment_progress(order)
+    if remaining is None or remaining > Decimal('0.01'):
+        order.payment_method = payment_method
+        if order.status in ('pending_payment', 'partially_paid'):
+            order.status = 'partially_paid'
+        order.save(update_fields=['payment_method', 'status'])
+        notify_partially_paid_order(order, remaining or Decimal('0'))
+        return False
+
     order.payment_method = payment_method
     if order.status == 'pending_payment':
         order.status = 'requested'
@@ -48,7 +105,7 @@ def activate_paid_order(order, payment_method):
             )
 
         User = get_user_model()
-        for admin in User.objects.filter(is_superuser=True, is_active=True):
+        for admin in User.objects.filter(is_staff=True, is_active=True):
             Notification.objects.create(
                 user=admin,
                 order=order,
@@ -80,6 +137,7 @@ def activate_paid_order(order, payment_method):
             sms_service.send_sms(settings.ADMIN_PHONE_NUMBER, message.replace('Payment Confirmed!', 'PAID ONLINE ORDER!'))
     except Exception:
         logger.exception("Failed to send paid-order SMS for %s", order.code)
+    return True
 
 
 class ZeroPaymentCompletionView(views.APIView):
@@ -1424,13 +1482,7 @@ class MpesaCallbackView(views.APIView):
                         if order_reference and order_reference != 'GAME_WALLET_TOPUP' and not order_reference.startswith('BNPL_BALANCE'):
                             try:
                                 order = Order.objects.get(code=order_reference)
-                                total = order.actual_price or order.get_latest_staff_price() or order.price
-                                paid = Payment.objects.filter(
-                                    Q(order_id=order.id) | Q(raw_payload__order_reference=order.code),
-                                    status=Payment.STATUS_SUCCESS,
-                                ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
-                                if total is not None and paid >= Decimal(str(total)) - Decimal('0.01'):
-                                    activate_paid_order(order, 'mpesa')
+                                if activate_paid_order(order, 'mpesa'):
                                     logger.info(f"Updated order {order_reference} payment_method to mpesa")
                             except Order.DoesNotExist:
                                 logger.warning(f"Order with code {order_reference} not found when processing M-Pesa callback")

@@ -336,6 +336,8 @@ class OrderListSerializer(serializers.ModelSerializer):
     timeline = serializers.SerializerMethodField()
     order_items = serializers.SerializerMethodField()
     is_paid = serializers.SerializerMethodField()
+    paid_amount = serializers.SerializerMethodField()
+    remaining_amount = serializers.SerializerMethodField()
     washer_name = serializers.SerializerMethodField()
     folder_name = serializers.SerializerMethodField()
     fumigator_name = serializers.SerializerMethodField()
@@ -343,8 +345,20 @@ class OrderListSerializer(serializers.ModelSerializer):
     staff_input_details = serializers.SerializerMethodField()
     
     def get_is_paid(self, obj):
-        """Return whether this order has been paid"""
-        return obj.is_paid()
+        """Return true only when the full payable amount has been received."""
+        from payments.views import get_order_payment_progress
+        _total, _paid, remaining = get_order_payment_progress(obj)
+        return remaining is not None and remaining <= Decimal('0.01')
+
+    def get_paid_amount(self, obj):
+        from payments.views import get_order_payment_progress
+        _total, paid, _remaining = get_order_payment_progress(obj)
+        return paid
+
+    def get_remaining_amount(self, obj):
+        from payments.views import get_order_payment_progress
+        _total, _paid, remaining = get_order_payment_progress(obj)
+        return remaining
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -648,6 +662,8 @@ class OrderListSerializer(serializers.ModelSerializer):
             "timeline",
             "order_items",
             "is_paid",
+            "paid_amount",
+            "remaining_amount",
             "payment_method",
             "applied_offer",
             "offer_discount",

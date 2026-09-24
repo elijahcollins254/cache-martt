@@ -1602,13 +1602,18 @@ class OrderPaymentStatusView(APIView):
 
             if payments.exists():
                 payment = payments.first()
+                total = order.actual_price or order.get_latest_staff_price() or order.price
+                paid = payments.filter(status=Payment.STATUS_SUCCESS).aggregate(total=Sum('amount'))['total'] or Decimal('0')
+                remaining = max(Decimal(str(total)) - paid, Decimal('0')) if total is not None else Decimal('0')
                 mpesa_payments = payments.filter(provider='mpesa')
                 payment_statuses = set(payments.values_list('status', flat=True))
                 mpesa_statuses = set(mpesa_payments.values_list('status', flat=True))
 
                 # For BOOST + M-Pesa, the order is successful only when the
                 # cash remainder has also succeeded.
-                if mpesa_payments.exists() and 'success' in mpesa_statuses:
+                if remaining > Decimal('0.01') and 'success' in payment_statuses:
+                    payment_status = 'partially_paid'
+                elif mpesa_payments.exists() and 'success' in mpesa_statuses:
                     payment_status = 'success'
                 elif mpesa_payments.exists() and (
                     'initiated' in mpesa_statuses or 'pending' in mpesa_statuses
@@ -1625,7 +1630,12 @@ class OrderPaymentStatusView(APIView):
 
                 return Response({
                     'status': payment_status,
-                    'message': f'Payment is {payment_status}',
+                    'message': (
+                        f'Partially paid. KES {remaining:,.2f} remains before your order '
+                        'can be placed and delivery can start.'
+                        if payment_status == 'partially_paid'
+                        else f'Payment is {payment_status}'
+                    ),
                     'checkout_request_id': payment.provider_reference,
                     'order_id': order.code,
                     'amount': float(
@@ -1635,6 +1645,10 @@ class OrderPaymentStatusView(APIView):
                         if order.price is not None
                         else payment.amount
                     ),
+                    'total_amount': float(total) if total is not None else 0,
+                    'paid_amount': float(paid),
+                    'remaining_amount': float(remaining),
+                    'can_start_delivery': remaining <= Decimal('0.01'),
                     'delivery_requested': order.delivery_requested,
                 })
 

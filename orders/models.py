@@ -12,6 +12,7 @@ import uuid
 class Order(models.Model):
     STATUS_CHOICES = [
         ('pending_payment', 'Pending Payment'),
+        ('partially_paid', 'Partially Paid'),
         ('requested', 'Order Placed'),
         ('pending_assignment', 'Finding a Rider'),
         ('assigned_pickup', 'Rider Assigned'),
@@ -402,7 +403,8 @@ class Order(models.Model):
 
     # Valid status transitions
     VALID_TRANSITIONS = {
-        'pending_payment': ['requested', 'cancelled'],
+        'pending_payment': ['partially_paid', 'requested', 'cancelled'],
+        'partially_paid': ['requested', 'cancelled'],
         'requested': ['pending_assignment', 'assigned_pickup', 'cancelled'],
         'pending_assignment': ['assigned_pickup', 'cancelled'],
         'assigned_pickup': ['accepted_delivery', 'cancelled'],
