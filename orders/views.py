@@ -765,15 +765,12 @@ class OrderUpdateView(APIView):
                 # Track which role/staff member made the update
                 if prefix == 'washer' and request.user:
                     order.washer = request.user
-                    from django.utils import timezone
                     order.washed_at = timezone.now()
                 elif prefix == 'folder' and request.user:
                     order.folder = request.user
-                    from django.utils import timezone
                     order.folded_at = timezone.now()
                 elif prefix == 'fumigator' and request.user:
                     order.fumigator = request.user
-                    from django.utils import timezone
                     order.fumigated_at = timezone.now()
 
             order.save()
@@ -851,7 +848,6 @@ class OrderUpdateView(APIView):
                 # Track who washed the order
                 if request.user.is_staff or (hasattr(request.user, 'staff_type') and request.user.staff_type == 'washer'):
                     order.washer = request.user
-                    from django.utils import timezone
                     order.washed_at = timezone.now()
                     order.save(update_fields=['washer', 'washed_at'])
                     print(f"✓ Order {order.code} marked as washed by {request.user.username}")
@@ -914,7 +910,6 @@ class OrderUpdateView(APIView):
                 # Track who folded the order (for ready status set by folder)
                 if hasattr(request.user, 'staff_type') and request.user.staff_type == 'folder':
                     order.folder = request.user
-                    from django.utils import timezone
                     order.folded_at = timezone.now()
                     order.save(update_fields=['folder', 'folded_at'])
                     print(f"✓ Order {order.code} marked as ready by folder {request.user.username}")
@@ -1443,7 +1438,6 @@ class OrderListCreateView(generics.ListCreateAPIView):
             if user_phone and str(user_phone).strip():
                 try:
                     from services.sms_service import format_phone_number
-                    from django.utils import timezone
                     sms_service = AfricasTalkingSMSService()
                     # Format phone number to international format
                     formatted_phone = format_phone_number(user_phone)
@@ -1485,7 +1479,6 @@ class OrderListCreateView(generics.ListCreateAPIView):
             # 2. Send SMS to ADMIN
             if admin_phone:
                 try:
-                    from django.utils import timezone
                     sms_service = AfricasTalkingSMSService()
                     admin_url = f"https://www.cache.co.ke/orders/{order.code}"
                     
@@ -1542,7 +1535,6 @@ class OrderListCreateView(generics.ListCreateAPIView):
                 
                 if rider_phone and str(rider_phone).strip():
                     try:
-                        from django.utils import timezone
                         print(f"[DEBUG] Attempting to send SMS to rider {order.rider.username} at {rider_phone}")
                         sms_service = AfricasTalkingSMSService()
                         rider_url = f"https://www.cache.co.ke/rider/order/{order.code}"
