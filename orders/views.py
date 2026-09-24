@@ -1558,7 +1558,7 @@ class OrderListCreateView(generics.ListCreateAPIView):
                             f"Dropoff: {order.dropoff_address}\n"
                             f"Products: {services}\n"
                             f"Items: {order.items}\n"
-                            f"Price: KES {order.price or 'TBD'}\n"
+                            # f"Price: KES {order.price or 'TBD'}\n"
                             f"Est. Delivery: {est_time}\n"
                             f"Accept: {rider_url}"
                         )

@@ -423,7 +423,6 @@ class AfricasTalkingSMSService:
             message = (
                 f"Your Order #{order.code} Delivered!\n"
                 f"Thank you for using Cache.\n"
-                f"View order: {order_url}\n"
                 f"Rate your experience: {review_url}"
             )
             
