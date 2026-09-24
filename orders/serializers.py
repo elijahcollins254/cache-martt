@@ -95,7 +95,6 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             "package",
             "weight_kg",
             "price",
-            "actual_price",
             "total_price",
             "estimated_delivery",
             "service_quantities",
@@ -249,7 +248,6 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             delivery_cost = Decimal("0.00") if free_delivery_offer else Decimal("50.00")
             order_total = catalog_total + delivery_cost
             validated_data["price"] = order_total
-            validated_data["actual_price"] = order_total
             if free_delivery_offer:
                 validated_data["applied_offer"] = free_delivery_offer.offer
                 validated_data["free_delivery"] = True

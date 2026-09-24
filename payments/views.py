@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_order_payment_progress(order):
-    total = order.actual_price or order.get_latest_staff_price() or order.price
+    total = order.price
     paid = Payment.objects.filter(
         Q(order_id=order.id) | Q(raw_payload__order_reference=order.code),
         status=Payment.STATUS_SUCCESS,
@@ -121,7 +121,7 @@ def activate_paid_order(order, payment_method):
 
         services = ', '.join(service.name for service in order.services.all()) or 'N/A'
         customer_phone = order.user.phone if order.user and order.user.phone else None
-        payable_amount = order.actual_price if order.actual_price is not None else order.price
+        payable_amount = order.price
         message = (
             f"CACHE INDUSTRIES\n"
             f"Payment Confirmed!\n"
@@ -176,7 +176,7 @@ class ZeroPaymentCompletionView(views.APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        payable_amount = order.actual_price if order.actual_price is not None else order.price
+        payable_amount = order.price
         if payable_amount is None or payable_amount > 0:
             return Response(
                 {'detail': 'This order still has a balance to pay.'},
@@ -871,8 +871,7 @@ class BNPLViewSet(viewsets.GenericViewSet):
         """Validate that the provided amount matches the actual order price.
         
         SECURITY: This prevents users from modifying the amount in the URL
-        to pay less than the actual order requires. ONLY actual_price is accepted,
-        no fallback to estimated price field.
+        to pay less than the server-calculated order total.
         
         Args:
             order_id: The order code (e.g., 'WW-00225')
@@ -898,8 +897,8 @@ class BNPLViewSet(viewsets.GenericViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # SECURITY: ONLY use actual_price from staff input, no fallback to estimated price
-            order_price = order.actual_price or order.get_latest_staff_price()
+            # The server-calculated order price includes services and delivery.
+            order_price = order.price
             
             if order_price is None:
                 logger.error(f"[SECURITY] BNPL: Order {order_id} has no payable amount.")
@@ -1128,8 +1127,7 @@ class MpesaSTKPushView(views.APIView):
         """Validate that the provided amount matches the actual order price.
         
         SECURITY: This prevents users from modifying the amount in the URL
-        to pay less than the actual order requires. ONLY actual_price is accepted,
-        no fallback to estimated price field.
+        to pay less than the server-calculated order total.
         
         Args:
             order_id: The order code (e.g., 'WW-00225') or None for game wallet top-ups
@@ -1153,9 +1151,9 @@ class MpesaSTKPushView(views.APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # SECURITY: ONLY use actual_price from staff input, no fallback to estimated price
+            # The stored price is calculated from services and delivery.
             from decimal import Decimal
-            order_price = order.actual_price or order.get_latest_staff_price()
+            order_price = order.price
             
             if order_price is None:
                 logger.error(f"[SECURITY] Order {order_id} has no payable amount.")

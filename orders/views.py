@@ -678,17 +678,6 @@ class OrderUpdateView(APIView):
             if description is not None:
                 order.description = description
 
-            # Update staff-entered actual price if provided
-            actual_price = request.data.get('actual_price')
-            if actual_price is not None:
-                try:
-                    # attempt to coerce into Decimal-compatible numeric string
-                    from decimal import Decimal
-                    order.actual_price = Decimal(str(actual_price))
-                except Exception:
-                    # fallback to raw assignment; DB will validate/raise if invalid
-                    order.actual_price = actual_price
-
             # Update role-specific fields (washer, folder, fumigator)
             staff_role = request.data.get('staff_role')
             
@@ -795,13 +784,6 @@ class OrderUpdateView(APIView):
                 changed_details['weight_kg'] = {'old': old_values.get('weight_kg'), 'new': weight_kg}
             if description is not None and description != old_values.get('description'):
                 changed_details['description'] = {'old': old_values.get('description'), 'new': description}
-            # actual_price changed
-            if actual_price is not None:
-                # Compare with old value (coerce to string/Decimal as needed)
-                old_ap = old_values.get('actual_price')
-                # If Decimal objects, string comparison is safe for equality check here
-                if str(old_ap) != str(actual_price):
-                    changed_details['actual_price'] = {'old': old_ap, 'new': actual_price}
             # delivered_at changed (rider marking delivered)
             delivered_at_req = request.data.get('delivered_at')
             if delivered_at_req is not None:
@@ -1602,7 +1584,7 @@ class OrderPaymentStatusView(APIView):
 
             if payments.exists():
                 payment = payments.first()
-                total = order.actual_price or order.get_latest_staff_price() or order.price
+                total = order.price
                 paid = payments.filter(status=Payment.STATUS_SUCCESS).aggregate(total=Sum('amount'))['total'] or Decimal('0')
                 remaining = max(Decimal(str(total)) - paid, Decimal('0')) if total is not None else Decimal('0')
                 mpesa_payments = payments.filter(provider='mpesa')
@@ -1638,13 +1620,7 @@ class OrderPaymentStatusView(APIView):
                     ),
                     'checkout_request_id': payment.provider_reference,
                     'order_id': order.code,
-                    'amount': float(
-                        order.actual_price
-                        if order.actual_price is not None
-                        else order.price
-                        if order.price is not None
-                        else payment.amount
-                    ),
+                    'amount': float(order.price if order.price is not None else payment.amount),
                     'total_amount': float(total) if total is not None else 0,
                     'paid_amount': float(paid),
                     'remaining_amount': float(remaining),
@@ -1677,7 +1653,7 @@ class OrderContributionStatusView(APIView):
     def get(self, request, code, *args, **kwargs):
         try:
             order = Order.objects.get(code=code)
-            total = order.actual_price or order.get_latest_staff_price() or order.price
+            total = order.price
             if total is None:
                 return Response({'detail': 'This order does not have a payable amount yet.'}, status=status.HTTP_400_BAD_REQUEST)
 
