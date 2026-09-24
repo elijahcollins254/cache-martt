@@ -4,7 +4,9 @@ from django.contrib.auth import get_user_model
 from .models import Order, OrderItem, OrderReview
 from services.models import Service
 from users.models import Location
+from offers.models import UserOffer
 from decimal import Decimal
+from django.utils import timezone
 
 User = get_user_model()
 
@@ -229,6 +231,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         
         # Online catalog orders are paid before fulfillment. Calculate the
         # amount from stored prices instead of trusting the client payload.
+        free_delivery_offer = None
         if order_type == "online" and services:
             quantities_by_service = {
                 item.get("service_id"): item.get("quantity", 1)
@@ -238,11 +241,26 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                 service.price * quantities_by_service.get(service.id, 1)
                 for service in services
             )
-            validated_data["price"] = catalog_total
-            validated_data["actual_price"] = catalog_total
+            free_delivery_offer = UserOffer.objects.filter(
+                user=validated_data["user"],
+                offer__benefit_type="free_delivery",
+                is_used=False,
+            ).select_related("offer").order_by("claimed_at").first()
+            delivery_cost = Decimal("0.00") if free_delivery_offer else Decimal("50.00")
+            order_total = catalog_total + delivery_cost
+            validated_data["price"] = order_total
+            validated_data["actual_price"] = order_total
+            if free_delivery_offer:
+                validated_data["applied_offer"] = free_delivery_offer.offer
+                validated_data["free_delivery"] = True
 
         # Create the order
         order = Order.objects.create(**validated_data)
+
+        if free_delivery_offer:
+            free_delivery_offer.is_used = True
+            free_delivery_offer.used_at = timezone.now()
+            free_delivery_offer.save(update_fields=["is_used", "used_at"])
         
         # Add services to the order (skip for manual orders)
         if services:
