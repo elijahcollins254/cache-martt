@@ -5,6 +5,7 @@ from django.utils import timezone
 from decimal import Decimal
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
+from django.db.models import Q, Sum
 from rest_framework.views import APIView
 from .models import Order, OrderReview
 from .serializers import OrderListSerializer, OrderCreateSerializer, OrderReviewSerializer
@@ -1636,6 +1637,7 @@ class OrderPaymentStatusView(APIView):
                     ),
                     'delivery_requested': order.delivery_requested,
                 })
+
             else:
                 return Response({
                     'status': 'pending',
@@ -1651,6 +1653,40 @@ class OrderPaymentStatusView(APIView):
                 {'detail': 'Order not found'},
                 status=status.HTTP_404_NOT_FOUND
             )
+
+
+class OrderContributionStatusView(APIView):
+    """Return public payment progress for a shareable checkout link."""
+    permission_classes = []
+    authentication_classes = []
+
+    def get(self, request, code, *args, **kwargs):
+        try:
+            order = Order.objects.get(code=code)
+            total = order.actual_price or order.get_latest_staff_price() or order.price
+            if total is None:
+                return Response({'detail': 'This order does not have a payable amount yet.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            from payments.models import Payment
+            payments = Payment.objects.filter(
+                Q(order_id=order.id) | Q(raw_payload__order_reference=order.code),
+                status=Payment.STATUS_SUCCESS,
+            )
+            paid = payments.aggregate(total=Sum('amount'))['total'] or Decimal('0')
+            total = Decimal(str(total))
+            remaining = max(total - paid, Decimal('0'))
+            percent = min((paid / total * Decimal('100')) if total else Decimal('0'), Decimal('100'))
+
+            return Response({
+                'order_id': order.code,
+                'total_amount': float(total),
+                'paid_amount': float(paid),
+                'remaining_amount': float(remaining),
+                'progress_percent': float(percent.quantize(Decimal('0.01'))),
+                'is_fully_paid': remaining <= Decimal('0.01'),
+            })
+        except Order.DoesNotExist:
+            return Response({'detail': 'Order not found.'}, status=status.HTTP_404_NOT_FOUND)
 
 
 class RequestDeliveryView(APIView):

@@ -958,7 +958,7 @@ class MpesaSTKPushView(views.APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # SECURITY: Validate that the amount matches the actual order price
+        # SECURITY: Validate that the contribution does not exceed the unpaid balance.
         validation_error = self._validate_mpesa_order_amount(order_id, amount_float)
         if validation_error:
             return validation_error
@@ -1110,16 +1110,22 @@ class MpesaSTKPushView(views.APIView):
             order_price_decimal = Decimal(str(order_price))
             amount_decimal = Decimal(str(amount))
             
-            # Check if amounts match (allow 0.01 tolerance for rounding)
-            if abs(order_price_decimal - amount_decimal) > Decimal('0.01'):
+            from django.db.models import Q, Sum
+            paid = Payment.objects.filter(
+                Q(order_id=order.id) | Q(raw_payload__order_reference=order.code),
+                status=Payment.STATUS_SUCCESS,
+            ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
+            remaining = order_price_decimal - paid
+
+            if amount_decimal <= 0 or amount_decimal - remaining > Decimal('0.01'):
                 logger.warning(
-                    f"[SECURITY] FRAUD ALERT - Amount mismatch for order {order_id}: "
-                    f"requested={amount}, actual={order_price}"
+                    f"[SECURITY] Contribution exceeds unpaid balance for order {order_id}: "
+                    f"requested={amount}, remaining={remaining}"
                 )
                 return Response(
                     {
-                        'detail': f'Payment amount does not match order total',
-                        'expected_amount': float(order_price),
+                        'detail': 'Payment amount exceeds the remaining order balance',
+                        'remaining_amount': float(max(remaining, Decimal('0'))),
                         'provided_amount': amount,
                         'order_id': order_id
                     },
@@ -1418,8 +1424,14 @@ class MpesaCallbackView(views.APIView):
                         if order_reference and order_reference != 'GAME_WALLET_TOPUP' and not order_reference.startswith('BNPL_BALANCE'):
                             try:
                                 order = Order.objects.get(code=order_reference)
-                                activate_paid_order(order, 'mpesa')
-                                logger.info(f"Updated order {order_reference} payment_method to mpesa")
+                                total = order.actual_price or order.get_latest_staff_price() or order.price
+                                paid = Payment.objects.filter(
+                                    Q(order_id=order.id) | Q(raw_payload__order_reference=order.code),
+                                    status=Payment.STATUS_SUCCESS,
+                                ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
+                                if total is not None and paid >= Decimal(str(total)) - Decimal('0.01'):
+                                    activate_paid_order(order, 'mpesa')
+                                    logger.info(f"Updated order {order_reference} payment_method to mpesa")
                             except Order.DoesNotExist:
                                 logger.warning(f"Order with code {order_reference} not found when processing M-Pesa callback")
                             except Exception as e:
