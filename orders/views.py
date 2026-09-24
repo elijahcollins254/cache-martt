@@ -587,7 +587,6 @@ class OrderUpdateView(APIView):
                 order.status = new_status
                 
                 # Set timestamps based on status
-                from django.utils import timezone
                 if status_changed_to_picked:
                     order.picked_at = timezone.now()
                 elif status_changed_to_ready:
