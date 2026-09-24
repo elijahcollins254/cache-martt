@@ -104,6 +104,7 @@ class Order(models.Model):
     delivery_code_hash = models.CharField(max_length=128, null=True, blank=True)
     delivery_code_sent_at = models.DateTimeField(null=True, blank=True)
     gate_notified_at = models.DateTimeField(null=True, blank=True)
+    pickup_confirmed_at = models.DateTimeField(null=True, blank=True)
     
     # --- RIDER TRACKING (SEPARATE PICKUP & DELIVERY) ---
     # Original rider field kept for backward compatibility
@@ -412,7 +413,7 @@ class Order(models.Model):
     VALID_TRANSITIONS = {
         'requested': ['pending_assignment', 'cancelled'],
         'pending_assignment': ['assigned_pickup', 'cancelled'],
-        'assigned_pickup': ['picked', 'cancelled'],
+        'assigned_pickup': ['accepted_delivery', 'picked', 'cancelled'],
         'picked': ['in_progress', 'accepted_delivery', 'cancelled'],
         'ready': ['pending_delivery', 'accepted_delivery', 'cancelled'],
         'in_progress': ['washed', 'cancelled'],

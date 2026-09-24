@@ -466,9 +466,20 @@ class OrderUpdateView(APIView):
             order = Order.objects.get(id=order_id)
 
             action = request.data.get('action')
+            if action == 'confirm_pickup':
+                if order.delivery_rider_id != request.user.id and order.pickup_rider_id != request.user.id and order.rider_id != request.user.id:
+                    return Response({'error': 'This order is not assigned to you.'}, status=status.HTTP_403_FORBIDDEN)
+                if order.status != 'accepted_delivery':
+                    return Response({'error': 'Accept the delivery before confirming pickup.'}, status=status.HTTP_400_BAD_REQUEST)
+                order.pickup_confirmed_at = timezone.now()
+                order.save(update_fields=['pickup_confirmed_at', 'updated_at'])
+                return Response({'message': 'Pickup confirmed successfully.'})
+
             if action == 'notify_gate':
                 if order.delivery_rider_id != request.user.id and order.pickup_rider_id != request.user.id and order.rider_id != request.user.id:
                     return Response({'error': 'This delivery is not assigned to you.'}, status=status.HTTP_403_FORBIDDEN)
+                if not order.pickup_confirmed_at:
+                    return Response({'error': 'Confirm pickup and check all products before notifying the customer.'}, status=status.HTTP_400_BAD_REQUEST)
 
                 if order.gate_notified_at:
                     return Response({
@@ -536,6 +547,11 @@ class OrderUpdateView(APIView):
 
             if new_status and new_status.lower() == 'delivered':
                 delivered_code = str(request.data.get('delivery_code') or '').strip()
+                if not order.gate_notified_at:
+                    return Response(
+                        {'error': 'The customer must be notified at the gate before delivery can be completed.'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
                 if not order.verify_delivery_code(delivered_code):
                     return Response(
                         {'error': 'A valid customer delivery code is required before marking this order as delivered.'},

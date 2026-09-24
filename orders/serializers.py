@@ -620,6 +620,7 @@ class OrderListSerializer(serializers.ModelSerializer):
             "estimated_delivery",
             "delivered_at",
             "gate_notified_at",
+            "pickup_confirmed_at",
             "picked_at",
             "ready_at",
             "rider",
