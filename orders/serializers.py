@@ -294,8 +294,8 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                         defaults={'quantity': 1}
                     )
         
-        order.code = f"WW-{order.id:05d}"
-        order.save(update_fields=["code"])
+        if not order.code:
+            order.save(update_fields=["code"])
         return order
 
     def get_total_price(self, obj):

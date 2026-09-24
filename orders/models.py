@@ -7,7 +7,7 @@ from users.models import Location
 from decimal import Decimal
 import hashlib
 import random
-import uuid
+import secrets
 
 class Order(models.Model):
     STATUS_CHOICES = [
@@ -351,7 +351,9 @@ class Order(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.code:
-            self.code = f"WW-{uuid.uuid4().hex[:6].upper()}"
+            alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+            parts = [''.join(secrets.choice(alphabet) for _ in range(4)) for _ in range(3)]
+            self.code = f"CM-{'-'.join(parts)}"
         # Set the first service as primary service for backward compatibility
         if not self.service and self.pk:
             first_service = self.services.first()
