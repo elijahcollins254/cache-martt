@@ -6,8 +6,8 @@ from decimal import Decimal
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from .models import Order
-from .serializers import OrderListSerializer, OrderCreateSerializer
+from .models import Order, OrderReview
+from .serializers import OrderListSerializer, OrderCreateSerializer, OrderReviewSerializer
 from users.permissions import LocationBasedPermission
 from users.models import Location
 from offers.models import UserOffer
@@ -1080,6 +1080,40 @@ class OrderUpdateView(APIView):
         except Exception as e:
             print(f"[ERROR] Exception in OrderUpdateView: {str(e)}")
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class OrderReviewView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_order(self, request, code):
+        return Order.objects.get(code=code, user=request.user)
+
+    def get(self, request, code):
+        try:
+            order = self.get_order(request, code)
+        except Order.DoesNotExist:
+            return Response({'detail': 'Order not found.'}, status=status.HTTP_404_NOT_FOUND)
+        if order.status != 'delivered':
+            return Response({'detail': 'You can review an order after it is delivered.'}, status=status.HTTP_400_BAD_REQUEST)
+        review = OrderReview.objects.filter(order=order).first()
+        return Response(OrderReviewSerializer(review).data if review else None)
+
+    def post(self, request, code):
+        try:
+            order = self.get_order(request, code)
+        except Order.DoesNotExist:
+            return Response({'detail': 'Order not found.'}, status=status.HTTP_404_NOT_FOUND)
+        if order.status != 'delivered':
+            return Response({'detail': 'You can review an order after it is delivered.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        review = OrderReview.objects.filter(order=order).first()
+        serializer = OrderReviewSerializer(
+            instance=review,
+            data={'rating': request.data.get('rating'), 'feedback': request.data.get('feedback', '').strip()},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save(order=order, customer=request.user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
 
 class OrderListCreateView(generics.ListCreateAPIView):
     """

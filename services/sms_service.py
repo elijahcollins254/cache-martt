@@ -367,6 +367,7 @@ class AfricasTalkingSMSService:
             
             services = ', '.join([s.name for s in order.services.all()]) if order.services.exists() else 'N/A'
             order_url = f"https://www.cache.co.ke/orders/{order.code}"
+            review_url = f"https://www.cache.co.ke/orders/{order.code}/rate"
             
             # Extract clean pickup address and calculate hours for estimated delivery
             clean_pickup = order.pickup_address.split('(contact:')[0].strip() if order.pickup_address else 'N/A'
@@ -418,11 +419,12 @@ class AfricasTalkingSMSService:
             os.environ['CURL_CA_BUNDLE'] = ''
             
             order_url = f"https://www.cache.co.ke/orders/{order.code}"
+            review_url = f"https://www.cache.co.ke/orders/{order.code}/rate"
             message = (
                 f"Your Order #{order.code} Delivered!\n"
                 f"Thank you for using Cache.\n"
                 f"View order: {order_url}\n"
-                f"Rate us: cache.co.ke"
+                f"Rate your experience: {review_url}"
             )
             
             result = self.send_sms(customer_phone, message)

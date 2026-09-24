@@ -487,6 +487,21 @@ class Order(models.Model):
         ]
 
 
+class OrderReview(models.Model):
+    order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name='review')
+    customer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='order_reviews')
+    rating = models.PositiveSmallIntegerField()
+    feedback = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.order.code} review ({self.rating}/5)'
+
+
 class OrderItem(models.Model):
     """Track individual service items and their quantities in an order"""
     order = models.ForeignKey(Order, related_name='order_items', on_delete=models.CASCADE)
