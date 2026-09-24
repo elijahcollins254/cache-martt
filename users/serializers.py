@@ -1,7 +1,7 @@
 # users/serializers.py
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
-from .models import Location, ActivityLog
+from .models import Location, ActivityLog, format_phone_number
 
 User = get_user_model()
 
@@ -93,6 +93,18 @@ class UserSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "is_staff", "date_joined"]
 
+    def validate_phone(self, value):
+        """Reject duplicate phone numbers across user updates."""
+        if not value:
+            return value
+
+        normalized_phone = format_phone_number(value)
+        if User.objects.filter(phone=normalized_phone).exclude(pk=self.instance.pk if self.instance else None).exists():
+            raise serializers.ValidationError(
+                'A user with this phone number already exists. Please use a different number.'
+            )
+        return normalized_phone
+
     def get_service_location_display(self, obj):
         if obj.service_location:
             return obj.service_location.name
@@ -118,6 +130,18 @@ class UserCreateSerializer(serializers.ModelSerializer):
                 f"A user with the username '{value}' already exists. Please choose a different username."
             )
         return value
+
+    def validate_phone(self, value):
+        """Normalize and reject duplicate phone numbers."""
+        if not value:
+            return value
+
+        normalized_phone = format_phone_number(value)
+        if User.objects.filter(phone=normalized_phone).exclude(pk=self.instance.pk if self.instance else None).exists():
+            raise serializers.ValidationError(
+                'A user with this phone number already exists. Please use a different number.'
+            )
+        return normalized_phone
 
     def create(self, validated_data):
         password = validated_data.pop("password")

@@ -1,5 +1,6 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.db.models import Q
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 import random
@@ -101,10 +102,30 @@ class User(AbstractUser):
         help_text="Indicates whether user has completed their profile setup (required for Google OAuth users)"
     )
 
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['phone'],
+                condition=Q(phone__isnull=False) & ~Q(phone=''),
+                name='unique_phone_number'
+            )
+        ]
+
+    def validate_phone_uniqueness(self):
+        if not self.phone:
+            return
+
+        duplicate_exists = User.objects.filter(phone=self.phone).exclude(pk=self.pk).exists()
+        if duplicate_exists:
+            raise ValidationError({
+                'phone': 'A user with this phone number already exists. Please use a different number.'
+            })
+
     def save(self, *args, **kwargs):
         """Auto-format phone number to international format before saving"""
         if self.phone:
             self.phone = format_phone_number(self.phone)
+            self.validate_phone_uniqueness()
         super().save(*args, **kwargs)
 
     def __str__(self):
