@@ -11,23 +11,14 @@ import uuid
 
 class Order(models.Model):
     STATUS_CHOICES = [
-        # Initial stages
         ('pending_payment', 'Pending Payment'),
-        ('requested', 'Order Requested'),
-        ('pending_assignment', 'Pending Pickup Assignment'),  # Awaiting pickup rider
-        ('assigned_pickup', 'Assigned for Pickup'),           # Pickup rider assigned
+        ('requested', 'Order Placed'),
+        ('pending_assignment', 'Finding a Rider'),
+        ('assigned_pickup', 'Rider Assigned'),
+        ('accepted_delivery', 'Rider Confirmed'),
         ('picked', 'Picked Up'),
-        # Processing stages
-        ('in_progress', 'In Progress'),
-        ('washed', 'Washed'),
-        ('folded', 'Folded'),
-        # Delivery stages
-        ('ready', 'Ready for Delivery'),
-        ('pending_delivery', 'Pending Delivery Assignment'),  # Awaiting delivery rider
-        ('assigned_delivery', 'Assigned for Delivery'),       # Delivery rider assigned
-        ('accepted_delivery', 'Accepted for Delivery'),       # Delivery rider accepted
+        ('at_gate', 'At the Gate'),
         ('delivered', 'Delivered'),
-        # Other
         ('cancelled', 'Cancelled'),
     ]
 
@@ -411,17 +402,13 @@ class Order(models.Model):
 
     # Valid status transitions
     VALID_TRANSITIONS = {
-        'requested': ['pending_assignment', 'cancelled'],
+        'pending_payment': ['requested', 'cancelled'],
+        'requested': ['pending_assignment', 'assigned_pickup', 'cancelled'],
         'pending_assignment': ['assigned_pickup', 'cancelled'],
-        'assigned_pickup': ['accepted_delivery', 'picked', 'cancelled'],
-        'picked': ['in_progress', 'accepted_delivery', 'cancelled'],
-        'ready': ['pending_delivery', 'accepted_delivery', 'cancelled'],
-        'in_progress': ['washed', 'cancelled'],
-        'washed': ['folded', 'cancelled'],
-        'folded': ['ready', 'cancelled'],
-        'pending_delivery': ['assigned_delivery', 'cancelled'],
-        'assigned_delivery': ['accepted_delivery', 'cancelled'],
-        'accepted_delivery': ['delivered', 'cancelled'],
+        'assigned_pickup': ['accepted_delivery', 'cancelled'],
+        'accepted_delivery': ['picked', 'cancelled'],
+        'picked': ['at_gate', 'cancelled'],
+        'at_gate': ['delivered', 'cancelled'],
         'delivered': ['cancelled'],
         'cancelled': [],
     }
@@ -441,7 +428,7 @@ class Order(models.Model):
         return self.pickup_rider == user or (
             # Fallback to old rider field for backward compatibility
             not self.pickup_rider and self.rider == user and 
-            self.status in ['assigned_pickup', 'picked', 'in_progress', 'washed', 'folded']
+            self.status in ['assigned_pickup', 'accepted_delivery', 'picked', 'at_gate']
         )
 
     def is_assigned_to_delivery_rider(self, user):

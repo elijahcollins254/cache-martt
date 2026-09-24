@@ -366,9 +366,7 @@ class RequestedOrdersListView(generics.ListAPIView):
 class RiderOrderListView(generics.ListAPIView):
     """
     GET -> List orders assigned to the authenticated rider
-    For washers: Show 'in_progress' orders to wash
-    For folders: Show 'washed' orders to fold
-    For riders: Show 'ready' and 'delivered' orders for delivery
+    For riders: Show delivery orders through the pickup and delivery lifecycle
     Excludes orders with: Cleaning, fumigation, cctv installation, shower installation
     """
     serializer_class = OrderListSerializer
@@ -381,48 +379,22 @@ class RiderOrderListView(generics.ListAPIView):
         user = self.request.user
         excluded_services = ['Cleaning', 'fumigation', 'cctv installation', 'shower installation']
         
-        # For washers: show in_progress orders
-        if hasattr(user, 'staff_type') and user.staff_type == 'washer':
-            queryset = Order.objects.filter(
-                service_location=user.service_location,
-                status='in_progress',
-                washer__isnull=True  # Not yet assigned to a washer
-            ).exclude(
-                services__name__in=excluded_services
-            ).distinct().select_related('user', 'service', 'rider', 'service_location').prefetch_related('services').order_by('-created_at')
-            
-            print(f"\n[DEBUG WasherOrders] Washer {user.username} (ID: {user.id}) querying in_progress orders")
-            print(f"[DEBUG] Total in_progress orders: {queryset.count()}")
-        
-        # For folders: show washed orders
-        elif hasattr(user, 'staff_type') and user.staff_type == 'folder':
-            queryset = Order.objects.filter(
-                service_location=user.service_location,
-                status='washed',
-                folder__isnull=True  # Not yet assigned to a folder
-            ).exclude(
-                services__name__in=excluded_services
-            ).distinct().select_related('user', 'service', 'rider', 'service_location').prefetch_related('services').order_by('-created_at')
-            
-            print(f"\n[DEBUG FolderOrders] Folder {user.username} (ID: {user.id}) querying washed orders")
-            print(f"[DEBUG] Total washed orders: {queryset.count()}")
-        
-        # For riders: show requested and other in-transit orders
+        # Riders own the delivery lifecycle; legacy staff roles no longer add
+        # washing/folding states to the order workflow.
         # Check both old 'rider' field and new 'pickup_rider'/'delivery_rider' fields
-        else:
-            from django.db.models import Q
-            queryset = Order.objects.filter(
-                Q(rider=user) |  # Old field for backward compatibility
-                Q(pickup_rider=user) |  # New pickup rider field
-                Q(delivery_rider=user),  # New delivery rider field
-                status__in=['requested', 'assigned_pickup', 'picked', 'in_progress', 'washed', 'folded', 'ready', 'pending_delivery', 'assigned_delivery', 'accepted_delivery', 'delivered']
-            ).exclude(
-                services__name__in=excluded_services
-            ).distinct().select_related('user', 'service', 'rider', 'pickup_rider', 'delivery_rider', 'service_location').prefetch_related('services').order_by('-created_at')
-            
-            print(f"\n[DEBUG RiderOrders] Rider {user.username} (ID: {user.id}) querying orders")
-            print(f"[DEBUG] Total orders assigned to this rider: {queryset.count()}")
-            print(f"[DEBUG] Checking rider={user}, pickup_rider={user}, delivery_rider={user}")
+        from django.db.models import Q
+        queryset = Order.objects.filter(
+            Q(rider=user) |  # Old field for backward compatibility
+            Q(pickup_rider=user) |  # New pickup rider field
+            Q(delivery_rider=user),  # New delivery rider field
+            status__in=['requested', 'pending_assignment', 'assigned_pickup', 'accepted_delivery', 'picked', 'at_gate', 'delivered']
+        ).exclude(
+            services__name__in=excluded_services
+        ).distinct().select_related('user', 'service', 'rider', 'pickup_rider', 'delivery_rider', 'service_location').prefetch_related('services').order_by('-created_at')
+
+        print(f"\n[DEBUG RiderOrders] Rider {user.username} (ID: {user.id}) querying orders")
+        print(f"[DEBUG] Total orders assigned to this rider: {queryset.count()}")
+        print(f"[DEBUG] Checking rider={user}, pickup_rider={user}, delivery_rider={user}")
         
         return queryset
 
@@ -439,7 +411,7 @@ class RiderOrderListView(generics.ListAPIView):
             )
             if action == 'accept':
                 order.rider = request.user
-                order.status = 'in_progress'  # Change status to in_progress directly
+                order.status = 'accepted_delivery'
                 order.save()
                 return Response({'message': 'Order accepted successfully', 'order': OrderListSerializer(order).data})
             else:
@@ -472,7 +444,9 @@ class OrderUpdateView(APIView):
                 if order.status != 'accepted_delivery':
                     return Response({'error': 'Accept the delivery before confirming pickup.'}, status=status.HTTP_400_BAD_REQUEST)
                 order.pickup_confirmed_at = timezone.now()
-                order.save(update_fields=['pickup_confirmed_at', 'updated_at'])
+                order.status = 'picked'
+                order.picked_at = order.picked_at or timezone.now()
+                order.save(update_fields=['pickup_confirmed_at', 'picked_at', 'status', 'updated_at'])
                 return Response({'message': 'Pickup confirmed successfully.'})
 
             if action == 'notify_gate':
@@ -480,6 +454,9 @@ class OrderUpdateView(APIView):
                     return Response({'error': 'This delivery is not assigned to you.'}, status=status.HTTP_403_FORBIDDEN)
                 if not order.pickup_confirmed_at:
                     return Response({'error': 'Confirm pickup and check all products before notifying the customer.'}, status=status.HTTP_400_BAD_REQUEST)
+
+                if order.status != 'picked':
+                    return Response({'error': 'The order must be marked as picked up before notifying the customer.'}, status=status.HTTP_400_BAD_REQUEST)
 
                 if order.gate_notified_at:
                     return Response({
@@ -490,6 +467,8 @@ class OrderUpdateView(APIView):
                 if not order.delivery_code_hash:
                     delivery_code = order.generate_delivery_code()
                     send_customer_delivery_code_sms(order, delivery_code)
+                order.status = 'at_gate'
+                order.save(update_fields=['status', 'updated_at'])
                 send_gate_arrival_sms(order)
                 return Response({
                     'message': 'Customer has been notified that the rider is at the gate.',
@@ -558,10 +537,12 @@ class OrderUpdateView(APIView):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
             
-            status_changed_to_ready = new_status and new_status.lower() == 'ready' and old_status.lower() != 'ready'
             status_changed_to_picked = new_status and new_status.lower() == 'picked' and old_status.lower() != 'picked'
             status_changed_to_delivered = new_status and new_status.lower() == 'delivered' and old_status.lower() != 'delivered'
-            status_changed_to_washed = new_status and new_status.lower() == 'washed' and old_status.lower() != 'washed'
+            # Legacy washer/folder notification branches remain below for old
+            # records, but the delivery-only flow never enters them.
+            status_changed_to_ready = False
+            status_changed_to_washed = False
 
             # Capture old values before update
             old_values = {
@@ -577,7 +558,6 @@ class OrderUpdateView(APIView):
 
             print(f"\n[DEBUG OrderUpdate] Order {order.code}")
             print(f"[DEBUG] Old status: {old_status}, New status: {new_status}")
-            print(f"[DEBUG] Status changed to ready: {status_changed_to_ready}")
             print(f"[DEBUG] Status changed to picked: {status_changed_to_picked}")
             print(f"[DEBUG] Pickup rider: {order.pickup_rider.username if order.pickup_rider else 'None'}")
             print(f"[DEBUG] Delivery rider: {order.delivery_rider.username if order.delivery_rider else 'None'}")
@@ -589,8 +569,6 @@ class OrderUpdateView(APIView):
                 # Set timestamps based on status
                 if status_changed_to_picked:
                     order.picked_at = timezone.now()
-                elif status_changed_to_ready:
-                    order.ready_at = timezone.now()
                 elif status_changed_to_delivered:
                     order.delivered_at = timezone.now()
 
@@ -630,9 +608,8 @@ class OrderUpdateView(APIView):
                     from users.models import User
                     rider = User.objects.get(id=delivery_rider_id, role='rider', is_active=True)
                     order.delivery_rider = rider
-                    # If status is ready or pending_delivery, move to assigned_delivery
-                    if order.status in ['ready', 'pending_delivery']:
-                        order.status = 'assigned_delivery'
+                    if order.status in ['requested', 'pending_assignment']:
+                        order.status = 'assigned_pickup'
                     print(f"[DEBUG] Delivery rider assigned: {rider.username}")
 
                     # Send notification to the newly assigned rider
@@ -659,15 +636,13 @@ class OrderUpdateView(APIView):
                     old_rider = order.rider
                     
                     # Determine if this is pickup or delivery based on current status
-                    if order.status in ['requested', 'pending_assignment', 'assigned_pickup', 'picked', 'in_progress', 'washed', 'folded']:
+                    if order.status in ['requested', 'pending_assignment', 'assigned_pickup']:
                         order.pickup_rider = rider
                         order.rider = rider
                         if order.status in ['pending_assignment', 'requested']:
                             order.status = 'assigned_pickup'
-                    elif order.status in ['ready', 'pending_delivery']:
+                    elif order.status in ['accepted_delivery', 'picked', 'at_gate']:
                         order.delivery_rider = rider
-                        if order.status == 'pending_delivery':
-                            order.status = 'assigned_delivery'
                     
                     print(f"[DEBUG] Rider assigned (legacy): {rider.username} (was: {old_rider.username if old_rider else 'None'})")
 
