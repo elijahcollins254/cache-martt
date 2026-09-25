@@ -1681,6 +1681,39 @@ class OrderContributionStatusView(APIView):
             return Response({'detail': 'Order not found.'}, status=status.HTTP_404_NOT_FOUND)
 
 
+class PublicOrderSummaryView(APIView):
+    """Return payment-safe order details for a shareable checkout link."""
+    permission_classes = []
+    authentication_classes = []
+
+    def get(self, request, code, *args, **kwargs):
+        try:
+            order = Order.objects.select_related('service').prefetch_related(
+                'order_items__service'
+            ).get(code=code)
+        except Order.DoesNotExist:
+            return Response({'detail': 'Order not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        items = [
+            {
+                'name': item.service.name,
+                'quantity': item.quantity,
+                'price': float(item.service.price or 0),
+            }
+            for item in order.order_items.all()
+        ]
+
+        return Response({
+            'code': order.code,
+            'package': getattr(order.service, 'name', None) or 'Service order',
+            'items': order.items,
+            'total_amount': float(order.price or 0),
+            'pickup_address': order.pickup_address,
+            'dropoff_address': order.dropoff_address,
+            'order_items': items,
+        })
+
+
 class RequestDeliveryView(APIView):
     """
     POST -> Request delivery for a paid order
