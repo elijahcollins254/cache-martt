@@ -29,6 +29,8 @@ from rest_framework.permissions import IsAuthenticated
 
 logger = logging.getLogger(__name__)
 
+BOOST_CHECKOUT_TIMEOUT_MINUTES = 15
+
 
 def create_paid_guest_account(order, payment_phone):
     """Attach a guest order to a real account and return its setup URL, if new."""
@@ -87,6 +89,39 @@ def get_order_payment_progress(order):
     total = Decimal(str(total)) if total is not None else None
     remaining = max(total - paid, Decimal('0')) if total is not None else None
     return total, paid, remaining
+
+
+def release_expired_boost_checkout(payment, now=None):
+    """Release BOOST reserved for an STK checkout that never completed."""
+    if payment.provider != 'mpesa' or payment.status not in (
+        Payment.STATUS_PENDING,
+        Payment.STATUS_INITIATED,
+    ):
+        return False
+
+    payload = payment.raw_payload or {}
+    if not payload.get('is_boost_checkout') or not payment.initiated_at:
+        return False
+
+    now = now or timezone.now()
+    age_seconds = (now - payment.initiated_at).total_seconds()
+    if age_seconds < BOOST_CHECKOUT_TIMEOUT_MINUTES * 60:
+        return False
+
+    boost_payment_id = payload.get('boost_payment_id')
+    boost_amount = Decimal(str(payload.get('boost_amount', '0')))
+    if not boost_payment_id or boost_amount <= 0:
+        payment.mark_failed(note='Expired BOOST checkout without reserved credit.')
+        return True
+
+    account = BNPLUser.objects.select_for_update().get(user_id=payment.user_id)
+    boost_payment = Payment.objects.select_for_update().get(id=boost_payment_id)
+    account.current_balance = max(account.current_balance - boost_amount, Decimal('0.00'))
+    account.save(update_fields=['current_balance', 'updated_at'])
+    boost_payment.mark_failed(note='BOOST credit released after expired M-Pesa checkout.')
+    payment.mark_failed(note='M-Pesa checkout expired; reserved BOOST credit released.')
+    logger.info('Released expired BOOST checkout %s: %s KES', payment.id, boost_amount)
+    return True
 
 
 def notify_partially_paid_order(order, remaining):
@@ -1593,6 +1628,11 @@ class PaymentStatusView(views.APIView):
         
         try:
             payment = Payment.objects.get(provider_reference=checkout_request_id)
+            if payment.status in (Payment.STATUS_PENDING, Payment.STATUS_INITIATED):
+                with transaction.atomic():
+                    payment = Payment.objects.select_for_update().get(pk=payment.pk)
+                    release_expired_boost_checkout(payment)
+                    payment.refresh_from_db()
             
             return Response({
                 'status': payment.status,

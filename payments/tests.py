@@ -1,10 +1,13 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 from decimal import Decimal
+from datetime import timedelta
 
+from bnpl.models import BNPLAccount
 from orders.models import Order
 from payments.models import Payment
-from payments.views import get_order_payment_progress
+from payments.views import get_order_payment_progress, release_expired_boost_checkout
 from services.models import Service
 from users.models import Location
 
@@ -53,3 +56,41 @@ class PaymentProgressTests(TestCase):
         self.assertEqual(total, Decimal('500.00'))
         self.assertEqual(paid, Decimal('200.00'))
         self.assertEqual(remaining, Decimal('300.00'))
+
+    def test_expired_boost_checkout_releases_reserved_credit_once(self):
+        account = BNPLAccount.objects.create(
+            user=self.customer,
+            phone_number='+254712345678',
+            credit_limit=Decimal('500.00'),
+            current_balance=Decimal('100.00'),
+        )
+        boost_payment = Payment.objects.create(
+            user=self.customer,
+            amount=Decimal('100.00'),
+            phone_number='+254712345678',
+            provider='bnpl',
+            status=Payment.STATUS_SUCCESS,
+        )
+        stk_payment = Payment.objects.create(
+            user=self.customer,
+            amount=Decimal('50.00'),
+            phone_number='+254712345678',
+            provider='mpesa',
+            provider_reference='ws_CO_expired',
+            status=Payment.STATUS_INITIATED,
+            initiated_at=timezone.now() - timedelta(minutes=16),
+            raw_payload={
+                'is_boost_checkout': True,
+                'boost_payment_id': boost_payment.id,
+                'boost_amount': 100.0,
+            },
+        )
+
+        self.assertTrue(release_expired_boost_checkout(stk_payment))
+        account.refresh_from_db()
+        boost_payment.refresh_from_db()
+        stk_payment.refresh_from_db()
+        self.assertEqual(account.current_balance, Decimal('0.00'))
+        self.assertEqual(boost_payment.status, Payment.STATUS_FAILED)
+        self.assertEqual(stk_payment.status, Payment.STATUS_FAILED)
+        self.assertFalse(release_expired_boost_checkout(stk_payment))

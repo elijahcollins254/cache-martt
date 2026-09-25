@@ -1591,16 +1591,16 @@ class OrderPaymentStatusView(APIView):
                 payment_statuses = set(payments.values_list('status', flat=True))
                 mpesa_statuses = set(mpesa_payments.values_list('status', flat=True))
 
-                # For BOOST + M-Pesa, the order is successful only when the
-                # cash remainder has also succeeded.
-                if remaining > Decimal('0.01') and 'success' in payment_statuses:
-                    payment_status = 'partially_paid'
-                elif mpesa_payments.exists() and 'success' in mpesa_statuses:
-                    payment_status = 'success'
-                elif mpesa_payments.exists() and (
+                # Keep an unresolved M-Pesa leg pending even when BOOST has
+                # already reserved part of the order total.
+                if mpesa_payments.exists() and 'success' not in mpesa_statuses and (
                     'initiated' in mpesa_statuses or 'pending' in mpesa_statuses
                 ):
                     payment_status = 'initiated'
+                elif remaining > Decimal('0.01') and 'success' in payment_statuses:
+                    payment_status = 'partially_paid'
+                elif mpesa_payments.exists() and 'success' in mpesa_statuses:
+                    payment_status = 'success'
                 elif mpesa_payments.exists():
                     payment_status = 'failed'
                 elif 'success' in payment_statuses:
