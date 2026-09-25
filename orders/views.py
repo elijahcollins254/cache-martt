@@ -1708,7 +1708,7 @@ class PublicOrderSummaryView(APIView):
             'package': getattr(order.service, 'name', None) or 'Service order',
             'items': order.items,
             'total_amount': float(order.price or 0),
-            'pickup_address': order.pickup_address,
+            'delivery_cost': 0.0 if order.free_delivery else 50.0,
             'dropoff_address': order.dropoff_address,
             'order_items': items,
         })
