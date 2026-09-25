@@ -1655,7 +1655,7 @@ class OrderContributionStatusView(APIView):
     def get(self, request, code, *args, **kwargs):
         try:
             order = Order.objects.get(code=code)
-            total = order.price
+            total = order.actual_price if order.actual_price is not None else order.price
             if total is None:
                 return Response({'detail': 'This order does not have a payable amount yet.'}, status=status.HTTP_400_BAD_REQUEST)
 

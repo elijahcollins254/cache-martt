@@ -30,7 +30,14 @@ logger = logging.getLogger(__name__)
 
 
 def get_order_payment_progress(order):
-    total = order.price
+    """Calculate payment progress against the actual payable amount.
+
+    The payable total for an order is the offer-adjusted amount when an offer is
+    applied. Using the raw order price here creates a stale remaining-balance
+    calculation and allows double-crediting or overpayment against a discounted
+    order.
+    """
+    total = order.actual_price if order.actual_price is not None else order.price
     paid = Payment.objects.filter(
         Q(order_id=order.id) | Q(raw_payload__order_reference=order.code),
         status=Payment.STATUS_SUCCESS,
@@ -897,8 +904,8 @@ class BNPLViewSet(viewsets.GenericViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # The server-calculated order price includes services and delivery.
-            order_price = order.price
+            # The server-calculated payable total includes any offer discount.
+            order_price = order.actual_price if order.actual_price is not None else order.price
             
             if order_price is None:
                 logger.error(f"[SECURITY] BNPL: Order {order_id} has no payable amount.")
@@ -1151,9 +1158,9 @@ class MpesaSTKPushView(views.APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # The stored price is calculated from services and delivery.
+            # The stored payable total is the offer-adjusted amount when present.
             from decimal import Decimal
-            order_price = order.price
+            order_price = order.actual_price if order.actual_price is not None else order.price
             
             if order_price is None:
                 logger.error(f"[SECURITY] Order {order_id} has no payable amount.")
