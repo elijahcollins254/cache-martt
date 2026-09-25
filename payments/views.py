@@ -88,7 +88,7 @@ def activate_paid_order(order, payment_method):
         return False
 
     order.payment_method = payment_method
-    if order.status == 'pending_payment':
+    if order.status in ('pending_payment', 'partially_paid'):
         order.status = 'requested'
     order.save(update_fields=['payment_method', 'status'])
 
