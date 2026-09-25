@@ -1625,6 +1625,7 @@ class OrderPaymentStatusView(APIView):
                     'paid_amount': float(paid),
                     'remaining_amount': float(remaining),
                     'can_start_delivery': remaining <= Decimal('0.01'),
+                    'rider_assigned': bool(order.rider),
                     'delivery_requested': order.delivery_requested,
                 })
 
@@ -1635,6 +1636,7 @@ class OrderPaymentStatusView(APIView):
                     'checkout_request_id': '',
                     'order_id': order.code,
                     'amount': 0,
+                    'rider_assigned': bool(order.rider),
                     'delivery_requested': order.delivery_requested,
                 }, status=status.HTTP_404_NOT_FOUND)
                 
