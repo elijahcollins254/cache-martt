@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.contrib.auth import get_user_model, authenticate
+from django.contrib.auth.tokens import default_token_generator
 from rest_framework.authtoken.models import Token
 from rest_framework.authentication import TokenAuthentication
 from django.views.decorators.csrf import csrf_exempt
@@ -711,6 +712,29 @@ class ConfirmPasswordResetView(APIView):
             {'detail': 'Password reset successful.'},
             status=status.HTTP_200_OK
         )
+
+
+class ConfirmPasswordSetupView(APIView):
+    """Set the first password for an account created after guest payment."""
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        uid = request.data.get('uid')
+        token = request.data.get('token')
+        password = request.data.get('password')
+        if not all([uid, token, password]):
+            return Response({'detail': 'uid, token, and password are required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if len(password) < 8:
+            return Response({'detail': 'Password must be at least 8 characters long.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            user = User.objects.get(pk=uid, is_active=True)
+        except User.DoesNotExist:
+            return Response({'detail': 'Invalid password setup link.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not default_token_generator.check_token(user, token):
+            return Response({'detail': 'This password setup link is invalid or expired.'}, status=status.HTTP_400_BAD_REQUEST)
+        user.set_password(password)
+        user.save(update_fields=['password'])
+        return Response({'detail': 'Password setup successful.'}, status=status.HTTP_200_OK)
 
 
 class GoogleAuthView(APIView):

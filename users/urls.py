@@ -9,6 +9,7 @@ from .views import (
     get_csrf, RegisterView, UserProfileView, ProfileSetupView,
     LocationViewSet, StaffViewSet, StaffLoginView, AdminLoginView,
     RequestPasswordResetView, VerifyPasswordResetCodeView, ConfirmPasswordResetView,
+    ConfirmPasswordSetupView,
     ActivityLogViewSet, GoogleAuthView
 )
 
@@ -31,6 +32,7 @@ urlpatterns = [
     path('password-reset/request/', RequestPasswordResetView.as_view(), name='password-reset-request'),
     path('password-reset/verify/', VerifyPasswordResetCodeView.as_view(), name='password-reset-verify'),
     path('password-reset/confirm/', ConfirmPasswordResetView.as_view(), name='password-reset-confirm'),
+    path('password-setup/confirm/', ConfirmPasswordSetupView.as_view(), name='password-setup-confirm'),
     path('users/<int:user_id>/activity-logs/', ActivityLogViewSet.as_view({'get': 'list'}), name='user-activity-logs'),
 ]
 

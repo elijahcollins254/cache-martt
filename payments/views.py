@@ -2,6 +2,7 @@ import requests
 import base64
 import logging
 import os
+from urllib.parse import quote
 from datetime import datetime
 from decimal import Decimal
 from django.conf import settings
@@ -27,6 +28,47 @@ from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated
 
 logger = logging.getLogger(__name__)
+
+
+def create_paid_guest_account(order, payment_phone):
+    """Attach a guest order to a real account and return its setup URL, if new."""
+    from django.contrib.auth import get_user_model
+    from django.contrib.auth.tokens import default_token_generator
+    from services.sms_service import format_phone_number
+
+    User = get_user_model()
+    phone = format_phone_number(payment_phone)
+    if not phone or not order.user or order.user.username != 'guest_orders':
+        return None
+
+    user = User.objects.filter(phone=phone, is_active=True).first()
+    if user:
+        order.user = user
+        order.save(update_fields=['user'])
+        return None
+
+    username_base = f'customer_{phone.lstrip("+")}'
+    username = username_base
+    suffix = 1
+    while User.objects.filter(username=username).exists():
+        suffix += 1
+        username = f'{username_base}_{suffix}'
+
+    user = User.objects.create(
+        username=username,
+        email=f'{phone.lstrip("+")}@cache.local',
+        phone=phone,
+        role='customer',
+        is_active=True,
+    )
+    user.set_unusable_password()
+    user.save(update_fields=['password'])
+    order.user = user
+    order.save(update_fields=['user'])
+
+    frontend_url = os.getenv('FRONTEND_URL', 'https://www.cache.co.ke').rstrip('/')
+    token = default_token_generator.make_token(user)
+    return f'{frontend_url}/reset-password?uid={user.pk}&token={quote(token)}'
 
 
 def get_order_payment_progress(order):
@@ -83,7 +125,7 @@ def notify_partially_paid_order(order, remaining):
         logger.exception("Failed to send partial-payment SMS for %s", order.code)
 
 
-def activate_paid_order(order, payment_method):
+def activate_paid_order(order, payment_method, payment_phone=None):
     """Activate only fully paid orders; otherwise keep them partially paid."""
     _total, _paid, remaining = get_order_payment_progress(order)
     if remaining is None or remaining > Decimal('0.01'):
@@ -98,6 +140,12 @@ def activate_paid_order(order, payment_method):
     if order.status in ('pending_payment', 'partially_paid'):
         order.status = 'requested'
     order.save(update_fields=['payment_method', 'status'])
+
+    account_setup_url = None
+    try:
+        account_setup_url = create_paid_guest_account(order, payment_phone or order.customer_phone)
+    except Exception:
+        logger.exception("Failed to create paid guest account for %s", order.code)
 
     try:
         from notifications.models import Notification
@@ -127,7 +175,7 @@ def activate_paid_order(order, payment_method):
         from services.sms_service import AfricasTalkingSMSService, format_phone_number
 
         services = ', '.join(service.name for service in order.services.all()) or 'N/A'
-        customer_phone = order.user.phone if order.user and order.user.phone else None
+        customer_phone = order.user.phone if order.user and order.user.phone else order.customer_phone
         payable_amount = order.price
         message = (
             f"CACHE INDUSTRIES\n"
@@ -137,6 +185,8 @@ def activate_paid_order(order, payment_method):
             f"Amount: KES {payable_amount}\n"
             f"View: https://www.cache.co.ke/orders/{order.code}"
         )
+        if account_setup_url and customer_phone:
+            message += f"\nAccount created. Set your password: {account_setup_url}"
         sms_service = AfricasTalkingSMSService()
         if customer_phone:
             sms_service.send_sms(format_phone_number(customer_phone), message)
@@ -1487,7 +1537,7 @@ class MpesaCallbackView(views.APIView):
                         if order_reference and order_reference != 'GAME_WALLET_TOPUP' and not order_reference.startswith('BNPL_BALANCE'):
                             try:
                                 order = Order.objects.get(code=order_reference)
-                                if activate_paid_order(order, 'mpesa'):
+                                if activate_paid_order(order, 'mpesa', payment.phone_number):
                                     logger.info(f"Updated order {order_reference} payment_method to mpesa")
                             except Order.DoesNotExist:
                                 logger.warning(f"Order with code {order_reference} not found when processing M-Pesa callback")
