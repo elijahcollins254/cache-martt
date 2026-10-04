@@ -5,6 +5,7 @@ from rest_framework.test import APIClient
 
 from .models import MerchantProfile, Shop, ShopCategory, Product
 from services.models import Service, ServiceCategory
+from marketplace.admin import ProductAdmin, activate_products, deactivate_products
 
 User = get_user_model()
 
@@ -61,6 +62,32 @@ class MarketplaceModelsTest(TestCase):
         )
         self.assertEqual(product.slug, 'fresh-avocado')
 
+    def test_product_admin_bulk_actions_activate_and_deactivate_products(self):
+        shop = Shop.objects.create(
+            owner=self.merchant,
+            name='Fresh Basket Shop',
+            slug='fresh-basket-shop',
+        )
+        product = Product.objects.create(
+            shop=shop,
+            name='Fresh Avocado',
+            slug='fresh-avocado',
+            price='120.00',
+            is_active=False,
+        )
+
+        activate_products(None, None, Product.objects.filter(pk=product.pk))
+        product.refresh_from_db()
+        self.assertTrue(product.is_active)
+
+        deactivate_products(None, None, Product.objects.filter(pk=product.pk))
+        product.refresh_from_db()
+        self.assertFalse(product.is_active)
+
+    def test_product_admin_registers_bulk_status_actions(self):
+        self.assertIn(activate_products, ProductAdmin.actions)
+        self.assertIn(deactivate_products, ProductAdmin.actions)
+
     def test_shop_category_slug_is_generated_from_name(self):
         category = ShopCategory.objects.create(name='Home & Living')
         self.assertEqual(category.slug, 'home-living')
@@ -96,6 +123,46 @@ class MarketplaceModelsTest(TestCase):
         self.assertEqual(unassigned_service.shop_id, cache_liqour.id)
         self.assertEqual(cache_liqour.status, 'active')
         self.assertTrue(cache_liqour.is_verified)
+
+    def test_legacy_services_are_imported_as_products_idempotently(self):
+        from importlib import import_module
+        from django.apps import apps
+
+        service_category, _ = ServiceCategory.objects.get_or_create(
+            name='Cane Spirit',
+            defaults={'slug': 'cane-spirit'},
+        )
+        service = Service.objects.create(
+            name='Kenyan Cane Pineapple 750 ml',
+            shop=None,
+            category=service_category,
+            price='850.00',
+            description='Legacy product description',
+            image_url='https://example.com/cane.jpg',
+            is_active=False,
+        )
+        cache_liqour, _ = Shop.objects.get_or_create(
+            slug='cache-liqour',
+            defaults={
+                'name': 'Cache Liqour',
+                'status': 'active',
+                'is_verified': True,
+            },
+        )
+
+        migration = import_module('marketplace.migrations.0004_import_legacy_services_as_products')
+        migration.import_legacy_services_as_products(apps, None)
+        migration.import_legacy_services_as_products(apps, None)
+
+        product = Product.objects.get(shop=cache_liqour, name=service.name)
+        self.assertEqual(product.slug, 'kenyan-cane-pineapple-750-ml')
+        self.assertEqual(product.stock_quantity, 20)
+        self.assertEqual(product.category.name, 'Cane Spirit')
+        self.assertEqual(str(product.price), str(service.price))
+        self.assertEqual(product.image_url, service.image_url)
+        self.assertFalse(product.is_active)
+        self.assertEqual(Product.objects.filter(shop=cache_liqour, name=service.name).count(), 1)
+        self.assertTrue(Service.objects.filter(pk=service.pk).exists())
 
 
 class MarketplaceAPITest(TestCase):

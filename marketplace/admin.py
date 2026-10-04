@@ -3,6 +3,16 @@ from django.contrib import admin
 from .models import MerchantProfile, Product, ProductCategory, Shop, ShopCategory
 
 
+@admin.action(description='Activate selected products')
+def activate_products(modeladmin, request, queryset):
+    queryset.update(is_active=True)
+
+
+@admin.action(description='Deactivate selected products')
+def deactivate_products(modeladmin, request, queryset):
+    queryset.update(is_active=False)
+
+
 @admin.register(MerchantProfile)
 class MerchantProfileAdmin(admin.ModelAdmin):
     list_display = ('business_name', 'merchant_username', 'user', 'status', 'is_verified')
@@ -40,3 +50,4 @@ class ProductAdmin(admin.ModelAdmin):
     list_filter = ('category', 'shop', 'is_active')
     search_fields = ('name', 'description', 'category__name', 'shop__name')
     prepopulated_fields = {'slug': ('name',)}
+    actions = [activate_products, deactivate_products]
