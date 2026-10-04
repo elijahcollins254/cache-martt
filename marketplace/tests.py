@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from rest_framework.test import APIClient
 
-from .models import MerchantProfile, Shop, Product
+from .models import MerchantProfile, Shop, ShopCategory, Product
 from services.models import Service, ServiceCategory
 
 User = get_user_model()
@@ -61,6 +61,10 @@ class MarketplaceModelsTest(TestCase):
         )
         self.assertEqual(product.slug, 'fresh-avocado')
 
+    def test_shop_category_slug_is_generated_from_name(self):
+        category = ShopCategory.objects.create(name='Home & Living')
+        self.assertEqual(category.slug, 'home-living')
+
 
 class MarketplaceAPITest(TestCase):
     def setUp(self):
@@ -110,6 +114,33 @@ class MarketplaceAPITest(TestCase):
 
         self.assertEqual(response.status_code, 201)
         self.assertTrue(Shop.objects.filter(slug='fresh-basket-shop').exists())
+
+    def test_shop_categories_are_loaded_from_api_and_attached_to_shops(self):
+        category = ShopCategory.objects.create(name='Groceries', slug='groceries')
+        self.client.force_authenticate(user=self.user)
+        MerchantProfile.objects.create(
+            user=self.user,
+            merchant_username='freshbasket',
+            business_name='Fresh Basket',
+            phone='+254712345678',
+            status='verified',
+        )
+
+        create_response = self.client.post(
+            '/marketplace/shops/',
+            {
+                'name': 'Fresh Basket Shop',
+                'slug': 'fresh-basket-shop',
+                'category_id': category.id,
+            },
+            format='json',
+        )
+        categories_response = self.client.get('/marketplace/categories/')
+
+        self.assertEqual(create_response.status_code, 201)
+        self.assertEqual(create_response.data['category']['slug'], 'groceries')
+        self.assertEqual(categories_response.status_code, 200)
+        self.assertTrue(any(item['slug'] == 'groceries' for item in categories_response.data))
 
     def test_authenticated_merchant_can_create_product(self):
         self.client.force_authenticate(user=self.user)

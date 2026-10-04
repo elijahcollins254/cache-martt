@@ -4,8 +4,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import MerchantProfile, Product, Shop
-from .serializers import MerchantProfileSerializer, ProductSerializer, ShopSerializer
+from .models import MerchantProfile, Product, Shop, ShopCategory
+from .serializers import MerchantProfileSerializer, ProductSerializer, ShopCategorySerializer, ShopSerializer
 
 
 class MerchantProfileViewSet(viewsets.ModelViewSet):
@@ -56,8 +56,14 @@ class MerchantProfileViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
+class ShopCategoryViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = ShopCategory.objects.filter(is_active=True).order_by('name')
+    serializer_class = ShopCategorySerializer
+    permission_classes = [permissions.AllowAny]
+
+
 class ShopViewSet(viewsets.ModelViewSet):
-    queryset = Shop.objects.all().select_related('owner', 'owner__user')
+    queryset = Shop.objects.all().select_related('owner', 'owner__user', 'category')
     serializer_class = ShopSerializer
     permission_classes = [permissions.AllowAny]
     lookup_field = 'slug'
@@ -97,7 +103,9 @@ class ShopViewSet(viewsets.ModelViewSet):
 
 
 class ProductViewSet(viewsets.ModelViewSet):
-    queryset = Product.objects.filter(is_active=True).select_related('shop', 'shop__owner', 'shop__owner__user')
+    queryset = Product.objects.filter(is_active=True).select_related(
+        'shop', 'shop__category', 'shop__owner', 'shop__owner__user'
+    )
     serializer_class = ProductSerializer
     permission_classes = [permissions.AllowAny]
     pagination_class = None

@@ -17,7 +17,9 @@ class ServiceCategoryViewSet(viewsets.ReadOnlyModelViewSet):
 
 class ServiceViewSet(viewsets.ModelViewSet):
     """List and manage service catalogue (laundry, duvet, carpet, fumigation, etc.)"""
-    queryset = Service.objects.select_related('category', 'shop', 'shop__owner').order_by('category', 'name')
+    queryset = Service.objects.select_related(
+        'category', 'shop', 'shop__category', 'shop__owner'
+    ).order_by('category', 'name')
     serializer_class = ServiceSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -40,7 +42,9 @@ class ServiceViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='catalog')
     def catalog(self, request):
         services = self.get_queryset().filter(is_active=True)
-        products = Product.objects.filter(is_active=True).select_related('shop', 'shop__owner', 'shop__owner__user')
+        products = Product.objects.filter(is_active=True).select_related(
+            'shop', 'shop__category', 'shop__owner', 'shop__owner__user'
+        )
         if not request.user.is_authenticated:
             products = products.filter(shop__is_verified=True, shop__status='active')
 
@@ -55,7 +59,7 @@ class ServiceViewSet(viewsets.ModelViewSet):
                 'description': service.description,
                 'price': float(service.price),
                 'image_url': service.image_url or (request.build_absolute_uri(service.image.url) if service.image else None),
-                'shop': ShopSerializer(service.shop).data if service.shop else None,
+                'shop': ShopSerializer(service.shop, context={'request': request}).data if service.shop else None,
             })
 
         for product in products:
@@ -63,11 +67,11 @@ class ServiceViewSet(viewsets.ModelViewSet):
                 'id': product.id,
                 'type': 'product',
                 'name': product.name,
-                'category': product.shop.name if product.shop else 'Products',
+                'category': product.shop.category.slug if product.shop and product.shop.category else (product.shop.name if product.shop else 'Products'),
                 'description': product.description,
                 'price': float(product.price),
                 'image_url': product.image_url or (request.build_absolute_uri(product.image.url) if product.image else None),
-                'shop': ShopSerializer(product.shop).data if product.shop else None,
+                'shop': ShopSerializer(product.shop, context={'request': request}).data if product.shop else None,
             })
 
         catalog.sort(key=lambda item: (item['name'] or '').lower())

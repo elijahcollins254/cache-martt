@@ -29,6 +29,26 @@ class MerchantProfile(models.Model):
         return self.business_name
 
 
+class ShopCategory(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    slug = models.SlugField(max_length=120, unique=True)
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name']
+        verbose_name = 'Shop category'
+        verbose_name_plural = 'Shop categories'
+
+    def save(self, *args, **kwargs):
+        self.slug = slugify(self.slug or self.name)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
+
+
 class Shop(models.Model):
     STATUS_CHOICES = [
         ('active', 'Active'),
@@ -38,6 +58,13 @@ class Shop(models.Model):
 
     # A null owner is reserved for the platform-managed legacy services shop.
     owner = models.ForeignKey(MerchantProfile, on_delete=models.CASCADE, related_name='shops', null=True, blank=True)
+    category = models.ForeignKey(
+        ShopCategory,
+        on_delete=models.PROTECT,
+        related_name='shops',
+        null=True,
+        blank=True,
+    )
     name = models.CharField(max_length=160)
     slug = models.SlugField(max_length=180, unique=True)
     description = models.TextField(blank=True)
