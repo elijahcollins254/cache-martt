@@ -1,6 +1,8 @@
 # services/serializers.py
 from rest_framework import serializers
 from .models import Service, ServiceCategory
+from marketplace.models import Shop
+from marketplace.serializers import ShopSerializer
 
 
 class ServiceCategorySerializer(serializers.ModelSerializer):
@@ -11,6 +13,10 @@ class ServiceCategorySerializer(serializers.ModelSerializer):
 
 class ServiceSerializer(serializers.ModelSerializer):
     category = serializers.CharField(source='category.slug', read_only=True, allow_null=True)
+    shop = ShopSerializer(read_only=True)
+    shop_id = serializers.PrimaryKeyRelatedField(
+        source='shop', queryset=Shop.objects.all(), write_only=True, required=False
+    )
 
     def to_representation(self, instance):
         """Prefer a remote image URL and retain compatibility with uploaded images."""
@@ -25,5 +31,5 @@ class ServiceSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Service
-        fields = ["id", "name", "category", "price", "description", "image", "image_url"]
+        fields = ["id", "name", "category", "shop", "shop_id", "price", "description", "image", "image_url"]
         read_only_fields = ["id"]

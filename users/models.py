@@ -58,6 +58,7 @@ class Location(models.Model):
 class User(AbstractUser):
     ROLE_CHOICES = (
         ("customer", "Customer"),
+        ("merchant", "Merchant"),
         ("rider", "Rider"),
         ("admin", "Admin"),
         ("staff", "Staff"),

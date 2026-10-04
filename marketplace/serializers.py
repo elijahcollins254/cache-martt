@@ -22,7 +22,7 @@ class MerchantProfileSerializer(serializers.ModelSerializer):
 
 
 class ShopSerializer(serializers.ModelSerializer):
-    owner = MerchantProfileSerializer(read_only=True)
+    owner = MerchantProfileSerializer(read_only=True, allow_null=True)
     merchant_username = serializers.SerializerMethodField()
 
     class Meta:
@@ -43,7 +43,7 @@ class ShopSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'owner', 'merchant_username', 'created_at']
 
     def get_merchant_username(self, obj):
-        return obj.owner.merchant_username
+        return obj.owner.merchant_username if obj.owner else None
 
 
 class ProductSerializer(serializers.ModelSerializer):
@@ -79,3 +79,12 @@ class ProductSerializer(serializers.ModelSerializer):
         if not attrs['slug']:
             raise serializers.ValidationError({'slug': 'A valid product slug is required.'})
         return attrs
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        if not representation.get('image_url') and instance.image:
+            request = self.context.get('request')
+            representation['image_url'] = (
+                request.build_absolute_uri(instance.image.url) if request else instance.image.url
+            )
+        return representation

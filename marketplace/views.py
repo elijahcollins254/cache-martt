@@ -68,6 +68,11 @@ class ShopViewSet(viewsets.ModelViewSet):
             return qs
         return qs.filter(status='active', is_verified=True)
 
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve', 'products']:
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated()]
+
     def create(self, request, *args, **kwargs):
         if not request.user.is_authenticated:
             return Response({'detail': 'Authentication required.'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -96,16 +101,24 @@ class ProductViewSet(viewsets.ModelViewSet):
     serializer_class = ProductSerializer
     permission_classes = [permissions.AllowAny]
     pagination_class = None
-    lookup_field = 'slug'
 
     def get_queryset(self):
         qs = super().get_queryset()
         shop_slug = self.request.query_params.get('shop')
         if shop_slug:
             qs = qs.filter(shop__slug=shop_slug)
-        if not self.request.user.is_authenticated:
-            return qs.filter(shop__is_verified=True, shop__status='active')
-        return qs
+        if self.action in ['list', 'retrieve']:
+            qs = qs.filter(shop__is_verified=True, shop__status='active')
+        if self.request.user.is_authenticated:
+            merchant = MerchantProfile.objects.filter(user=self.request.user).first()
+            if merchant:
+                qs = qs | Product.objects.filter(shop__owner=merchant)
+        return qs.distinct()
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated()]
 
     def create(self, request, *args, **kwargs):
         if not request.user.is_authenticated:
@@ -132,3 +145,17 @@ class ProductViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         product = serializer.save(shop=shop)
         return Response(ProductSerializer(product).data, status=status.HTTP_201_CREATED)
+
+    def perform_update(self, serializer):
+        merchant = MerchantProfile.objects.filter(user=self.request.user).first()
+        if not merchant or serializer.instance.shop.owner_id != merchant.id:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('You can only update products in your own shop.')
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        merchant = MerchantProfile.objects.filter(user=self.request.user).first()
+        if not merchant or instance.shop.owner_id != merchant.id:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('You can only delete products in your own shop.')
+        instance.delete()

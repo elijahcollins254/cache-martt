@@ -26,15 +26,15 @@ class ServiceCategoryAdmin(admin.ModelAdmin):
 
 @admin.register(Service)
 class ServiceAdmin(admin.ModelAdmin):
-    list_display = ("name", "category", "price", "is_active", "created_at")
-    list_filter = ("category", "is_active", "created_at")
-    search_fields = ("name", "description", "category__name")
+    list_display = ("name", "shop", "category", "price", "is_active", "created_at")
+    list_filter = ("shop", "category", "is_active", "created_at")
+    search_fields = ("name", "description", "category__name", "shop__name")
     ordering = ("category", "name")
     readonly_fields = ("created_at", "updated_at")
     
     fieldsets = (
         ("Service Information", {
-            'fields': ('name', 'category', 'price')
+            'fields': ('name', 'shop', 'category', 'price')
         }),
         ("Details", {
             'fields': ('description', 'image_url', 'image')

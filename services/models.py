@@ -21,6 +21,13 @@ class ServiceCategory(models.Model):
 class Service(models.Model):
     """Individual services organized by category."""
     name = models.CharField(max_length=100)
+    shop = models.ForeignKey(
+        'marketplace.Shop',
+        on_delete=models.PROTECT,
+        related_name='services',
+        null=True,
+        blank=True,
+    )
     category = models.ForeignKey(ServiceCategory, on_delete=models.PROTECT, related_name='services', null=True, blank=True)
     category_name = models.CharField(max_length=30, null=True, blank=True, help_text='Legacy: kept for migration purposes')
     price = models.DecimalField(max_digits=10, decimal_places=2)

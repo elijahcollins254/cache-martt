@@ -4,6 +4,7 @@ from django.core.exceptions import ValidationError
 from rest_framework.test import APIClient
 
 from .models import MerchantProfile, Shop, Product
+from services.models import Service, ServiceCategory
 
 User = get_user_model()
 
@@ -173,3 +174,46 @@ class MarketplaceAPITest(TestCase):
         self.assertGreater(len(response.data), 0)
         self.assertIsInstance(response.data[0]['shop'], dict)
         self.assertEqual(response.data[0]['shop']['merchant_username'], 'freshbasket')
+
+    def test_catalog_endpoint_returns_services_and_products(self):
+        merchant = MerchantProfile.objects.create(
+            user=self.user,
+            merchant_username='freshbasket',
+            business_name='Fresh Basket',
+            phone='+254712345678',
+            status='verified',
+        )
+        shop = Shop.objects.create(
+            owner=merchant,
+            name='Fresh Basket Shop',
+            slug='fresh-basket-shop',
+            description='Groceries and laundry',
+            is_verified=True,
+            status='active',
+        )
+        category = ServiceCategory.objects.create(name='Laundry', slug='laundry', is_active=True)
+        Service.objects.create(
+            shop=shop,
+            category=category,
+            name='Express Wash',
+            price='250.00',
+            description='Fast wash and fold service',
+            is_active=True,
+        )
+        Product.objects.create(
+            shop=shop,
+            name='Fresh Avocado',
+            slug='fresh-avocado',
+            price='120.00',
+            description='Farm fresh avocados',
+            is_active=True,
+        )
+
+        response = self.client.get('/services/catalog/')
+
+        self.assertEqual(response.status_code, 200)
+        names = [item['name'] for item in response.data]
+        self.assertIn('Express Wash', names)
+        self.assertIn('Fresh Avocado', names)
+        self.assertTrue(any(item['type'] == 'service' and item['name'] == 'Express Wash' for item in response.data))
+        self.assertTrue(any(item['type'] == 'product' and item['name'] == 'Fresh Avocado' for item in response.data))
