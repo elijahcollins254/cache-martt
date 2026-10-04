@@ -72,6 +72,7 @@ class ServiceViewSet(viewsets.ModelViewSet):
                 'shop_category': product.shop.category.slug if product.shop and product.shop.category else None,
                 'description': product.description,
                 'price': float(product.price),
+                'stock_quantity': product.stock_quantity,
                 'image_url': product.image_url or (request.build_absolute_uri(product.image.url) if product.image else None),
                 'shop': ShopSerializer(product.shop, context={'request': request}).data if product.shop else None,
             })
