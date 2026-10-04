@@ -3,6 +3,16 @@ from django.utils.text import slugify
 from .models import ServiceCategory, Service
 
 
+@admin.action(description="Activate selected services")
+def activate_services(modeladmin, request, queryset):
+    queryset.update(is_active=True)
+
+
+@admin.action(description="Deactivate selected services")
+def deactivate_services(modeladmin, request, queryset):
+    queryset.update(is_active=False)
+
+
 @admin.register(ServiceCategory)
 class ServiceCategoryAdmin(admin.ModelAdmin):
     list_display = ("name", "slug", "is_active", "service_count", "created_at")
@@ -31,7 +41,8 @@ class ServiceAdmin(admin.ModelAdmin):
     search_fields = ("name", "description", "category__name", "shop__name")
     ordering = ("category", "name")
     readonly_fields = ("created_at", "updated_at")
-    
+    actions = [activate_services, deactivate_services]
+
     fieldsets = (
         ("Service Information", {
             'fields': ('name', 'shop', 'category', 'price')

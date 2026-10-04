@@ -65,6 +65,38 @@ class MarketplaceModelsTest(TestCase):
         category = ShopCategory.objects.create(name='Home & Living')
         self.assertEqual(category.slug, 'home-living')
 
+    def test_service_migration_moves_every_service_to_cache_liqour(self):
+        from importlib import import_module
+        from django.apps import apps
+
+        legacy_shop = Shop.objects.create(
+            owner=self.merchant,
+            name='Legacy Service Shop',
+            slug='legacy-service-shop',
+            status='suspended',
+            is_verified=False,
+        )
+        assigned_service = Service.objects.create(
+            shop=legacy_shop,
+            name='Legacy Assigned Service',
+            price='100.00',
+        )
+        unassigned_service = Service.objects.create(
+            name='Legacy Unassigned Service',
+            price='150.00',
+        )
+
+        migration = import_module('services.migrations.0011_move_services_to_cache_liqour')
+        migration.move_services_to_cache_liqour(apps, None)
+
+        cache_liqour = Shop.objects.get(slug='cache-liqour')
+        assigned_service.refresh_from_db()
+        unassigned_service.refresh_from_db()
+        self.assertEqual(assigned_service.shop_id, cache_liqour.id)
+        self.assertEqual(unassigned_service.shop_id, cache_liqour.id)
+        self.assertEqual(cache_liqour.status, 'active')
+        self.assertTrue(cache_liqour.is_verified)
+
 
 class MarketplaceAPITest(TestCase):
     def setUp(self):
@@ -140,7 +172,10 @@ class MarketplaceAPITest(TestCase):
         self.assertEqual(create_response.status_code, 201)
         self.assertEqual(create_response.data['category']['slug'], 'groceries')
         self.assertEqual(categories_response.status_code, 200)
-        self.assertTrue(any(item['slug'] == 'groceries' for item in categories_response.data))
+        categories = categories_response.data
+        if isinstance(categories, dict):
+            categories = categories.get('results', [])
+        self.assertTrue(any(item['slug'] == 'groceries' for item in categories))
 
     def test_authenticated_merchant_can_create_product(self):
         self.client.force_authenticate(user=self.user)
@@ -222,7 +257,10 @@ class MarketplaceAPITest(TestCase):
             is_verified=True,
             status='active',
         )
-        category = ServiceCategory.objects.create(name='Laundry', slug='laundry', is_active=True)
+        category, _ = ServiceCategory.objects.get_or_create(
+            slug='laundry',
+            defaults={'name': 'Laundry', 'is_active': True},
+        )
         Service.objects.create(
             shop=shop,
             category=category,

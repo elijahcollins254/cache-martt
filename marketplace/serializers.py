@@ -1,7 +1,7 @@
 from django.utils.text import slugify
 from rest_framework import serializers
 
-from .models import MerchantProfile, Shop, ShopCategory, Product
+from .models import MerchantProfile, Shop, ShopCategory, Product, ProductCategory
 
 
 class MerchantProfileSerializer(serializers.ModelSerializer):
@@ -24,6 +24,12 @@ class MerchantProfileSerializer(serializers.ModelSerializer):
 class ShopCategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = ShopCategory
+        fields = ['id', 'name', 'slug', 'description']
+
+
+class ProductCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductCategory
         fields = ['id', 'name', 'slug', 'description']
 
 
@@ -64,6 +70,14 @@ class ShopSerializer(serializers.ModelSerializer):
 
 class ProductSerializer(serializers.ModelSerializer):
     shop = ShopSerializer(read_only=True)
+    category = ProductCategorySerializer(read_only=True, allow_null=True)
+    category_id = serializers.PrimaryKeyRelatedField(
+        source='category',
+        queryset=ProductCategory.objects.filter(is_active=True),
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
     shop_id = serializers.PrimaryKeyRelatedField(
         source='shop',
         queryset=Shop.objects.all(),
@@ -77,6 +91,8 @@ class ProductSerializer(serializers.ModelSerializer):
             'id',
             'shop',
             'shop_id',
+            'category',
+            'category_id',
             'name',
             'slug',
             'description',

@@ -49,6 +49,26 @@ class ShopCategory(models.Model):
         return self.name
 
 
+class ProductCategory(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    slug = models.SlugField(max_length=120, unique=True)
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name']
+        verbose_name = 'Product category'
+        verbose_name_plural = 'Product categories'
+
+    def save(self, *args, **kwargs):
+        self.slug = slugify(self.slug or self.name)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
+
+
 class Shop(models.Model):
     STATUS_CHOICES = [
         ('active', 'Active'),
@@ -84,6 +104,13 @@ class Shop(models.Model):
 
 class Product(models.Model):
     shop = models.ForeignKey(Shop, on_delete=models.CASCADE, related_name='products')
+    category = models.ForeignKey(
+        ProductCategory,
+        on_delete=models.PROTECT,
+        related_name='products',
+        null=True,
+        blank=True,
+    )
     name = models.CharField(max_length=160)
     slug = models.SlugField(max_length=180)
     description = models.TextField(blank=True)

@@ -4,8 +4,14 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import MerchantProfile, Product, Shop, ShopCategory
-from .serializers import MerchantProfileSerializer, ProductSerializer, ShopCategorySerializer, ShopSerializer
+from .models import MerchantProfile, Product, ProductCategory, Shop, ShopCategory
+from .serializers import (
+    MerchantProfileSerializer,
+    ProductCategorySerializer,
+    ProductSerializer,
+    ShopCategorySerializer,
+    ShopSerializer,
+)
 
 
 class MerchantProfileViewSet(viewsets.ModelViewSet):
@@ -62,6 +68,12 @@ class ShopCategoryViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.AllowAny]
 
 
+class ProductCategoryViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = ProductCategory.objects.filter(is_active=True).order_by('name')
+    serializer_class = ProductCategorySerializer
+    permission_classes = [permissions.AllowAny]
+
+
 class ShopViewSet(viewsets.ModelViewSet):
     queryset = Shop.objects.all().select_related('owner', 'owner__user', 'category')
     serializer_class = ShopSerializer
@@ -104,7 +116,7 @@ class ShopViewSet(viewsets.ModelViewSet):
 
 class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.filter(is_active=True).select_related(
-        'shop', 'shop__category', 'shop__owner', 'shop__owner__user'
+        'category', 'shop', 'shop__category', 'shop__owner', 'shop__owner__user'
     )
     serializer_class = ProductSerializer
     permission_classes = [permissions.AllowAny]
