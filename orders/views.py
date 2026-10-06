@@ -1336,6 +1336,28 @@ class OrderListCreateView(generics.ListCreateAPIView):
         # Online orders are provisional until checkout succeeds. Do not notify
         # staff or customers, or expose the order as placed, before payment.
         if order.order_type == 'online' and not order.is_paid():
+            customer_phone = (
+                (order.user.phone if order.user and order.user.phone else None)
+                or order.customer_phone
+            )
+            if customer_phone and str(customer_phone).strip():
+                try:
+                    from services.sms_service import AfricasTalkingSMSService
+
+                    sms_result = AfricasTalkingSMSService().send_order_payment_reminder(
+                        customer_phone,
+                        order,
+                    )
+                    if sms_result and sms_result.get('status') == 'success':
+                        print(f"✓ Payment reminder SMS sent for order {order.code}")
+                    else:
+                        print(
+                            f"⚠ Payment reminder SMS failed for order {order.code}: "
+                            f"{sms_result.get('message', 'Unknown error') if sms_result else 'No response'}"
+                        )
+                except Exception as sms_error:
+                    # SMS delivery must not undo or fail an already-created order.
+                    print(f"⚠ Error sending payment reminder for order {order.code}: {sms_error}")
             return
         
         # Create in-app notifications for all three parties

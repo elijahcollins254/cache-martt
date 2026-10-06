@@ -401,6 +401,38 @@ class AfricasTalkingSMSService:
                 'error': str(e),
                 'order_code': order.code if hasattr(order, 'code') else None
             }
+
+    def send_order_payment_reminder(self, customer_phone, order):
+        """Ask the customer to pay for a newly created order before delivery starts."""
+        try:
+            order_lines = []
+            for item in order.order_items.select_related('service').all():
+                order_lines.append(f"{item.service.name} x{item.quantity}")
+            for item in order.product_order_items.all():
+                order_lines.append(f"{item.product_name} x{item.quantity}")
+
+            items_text = ', '.join(order_lines) if order_lines else f"{order.items} item(s)"
+            amount_due = order.actual_price if order.actual_price is not None else order.price
+            amount_text = f"KES {amount_due:,.2f}" if amount_due is not None else "KES amount pending confirmation"
+            checkout_url = f"https://www.cache.co.ke/checkout?order_id={order.code}"
+            if amount_due is not None:
+                checkout_url += f"&amount={amount_due}"
+
+            message = (
+                f"CACHE INDUSTRIES\n"
+                f"Order {order.code} received. Items: {items_text}.\n"
+                f"Amount to pay: {amount_text}.\n"
+                f"Complete payment to start delivery: {checkout_url}"
+            )
+            return self.send_sms(customer_phone, message)
+        except Exception as e:
+            logger.exception("Failed to send payment reminder for order %s", order.code)
+            return {
+                'status': 'error',
+                'message': f'Failed to send payment reminder: {str(e)}',
+                'error': str(e),
+                'order_code': order.code,
+            }
     
     def send_delivery_confirmation(self, customer_phone, order):
         """
