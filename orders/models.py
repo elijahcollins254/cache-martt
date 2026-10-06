@@ -509,6 +509,23 @@ class OrderItem(models.Model):
         return f"{self.order.code} - {self.service.name} x{self.quantity}"
 
 
+class ProductOrderItem(models.Model):
+    """Snapshot of a marketplace product included in a delivery order."""
+    order = models.ForeignKey(Order, related_name='product_order_items', on_delete=models.CASCADE)
+    product = models.ForeignKey('marketplace.Product', related_name='order_items', on_delete=models.PROTECT)
+    product_name = models.CharField(max_length=160)
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+    quantity = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [['order', 'product']]
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"{self.order.code} - {self.product_name} x{self.quantity}"
+
+
 class OrderEvent(models.Model):
     """A lightweight audit/event record for actions taken on an Order.
 

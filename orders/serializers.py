@@ -1,10 +1,12 @@
 # orders/serializers.py
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from .models import Order, OrderItem, OrderReview
 from services.models import Service
 from users.models import Location
 from offers.models import UserOffer
+from marketplace.models import Product
 from decimal import Decimal
 from django.utils import timezone
 
@@ -76,6 +78,17 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         write_only=True,
         required=False
     )
+    products = serializers.PrimaryKeyRelatedField(
+        queryset=Product.objects.filter(is_active=True),
+        many=True,
+        write_only=True,
+        required=False,
+    )
+    product_quantities = serializers.ListField(
+        child=serializers.DictField(child=serializers.IntegerField()),
+        write_only=True,
+        required=False,
+    )
     total_price = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
@@ -98,6 +111,8 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             "total_price",
             "estimated_delivery",
             "service_quantities",
+            "products",
+            "product_quantities",
             "payment_method",
             # Manual order fields
             "order_type",
@@ -124,17 +139,38 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             if not data.get("customer_phone"):
                 raise serializers.ValidationError({"customer_phone": "Customer phone is required for manual orders"})
         else:
-            # Online orders require at least one service
+            # Online orders require at least one service or marketplace product.
             services = data.get("services", [])
             service = data.get("service")
-            if not services and not service:
+            products = data.get("products", [])
+            if not services and not service and not products:
                 raise serializers.ValidationError(
-                    {"services": "At least one service must be provided"}
+                    {"services": "Add at least one service or product"}
                 )
+
+            products_by_id = {product.id: product for product in products}
+            product_quantities = data.get("product_quantities", [])
+            quantities_by_product = {}
+            for item in product_quantities:
+                product_id = item.get("product_id")
+                quantity = item.get("quantity", 1)
+                if product_id not in products_by_id:
+                    raise serializers.ValidationError({"product_quantities": "Product quantity refers to an item not in the order."})
+                if quantity < 1:
+                    raise serializers.ValidationError({"product_quantities": "Product quantities must be at least 1."})
+                quantities_by_product[product_id] = quantity
+
+            for product in products:
+                if product.shop.status != "active" or not product.shop.is_verified:
+                    raise serializers.ValidationError({"products": f"{product.name} is not currently available."})
+                requested_quantity = quantities_by_product.get(product.id, 1)
+                if requested_quantity > product.stock_quantity:
+                    raise serializers.ValidationError({"products": f"Only {product.stock_quantity} of {product.name} are available."})
         
         # allow weight_kg and price to be null for backend calculation
         return data
 
+    @transaction.atomic
     def create(self, validated_data):
         """
         Attach order to:
@@ -210,8 +246,27 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         
         # Extract services list for M2M
         services = validated_data.pop('services', [])
+        products = validated_data.pop('products', [])
         # Extract service_quantities if provided
         service_quantities = validated_data.pop('service_quantities', [])
+        product_quantities = validated_data.pop('product_quantities', [])
+
+        if products:
+            # Lock and re-fetch inventory inside the transaction so simultaneous
+            # checkouts cannot oversell the same stock.
+            requested_product_ids = [product.id for product in products]
+            locked_products = list(
+                Product.objects.select_for_update().filter(
+                    pk__in=requested_product_ids,
+                    is_active=True,
+                    shop__status="active",
+                    shop__is_verified=True,
+                )
+            )
+            if len(locked_products) != len(set(requested_product_ids)):
+                raise serializers.ValidationError({"products": "One or more products are no longer available."})
+            products_by_id = {product.id: product for product in locked_products}
+            products = [products_by_id[product_id] for product_id in requested_product_ids]
         
         # If no services in list but single service provided, use that
         if not services and 'service' in validated_data and order_type != "manual":
@@ -231,14 +286,22 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         # Online catalog orders are paid before fulfillment. Calculate the
         # amount from stored prices instead of trusting the client payload.
         free_delivery_offer = None
-        if order_type == "online" and services:
+        if order_type == "online" and (services or products):
             quantities_by_service = {
                 item.get("service_id"): item.get("quantity", 1)
                 for item in service_quantities
             }
-            catalog_total = sum(
+            service_total = sum(
                 service.price * quantities_by_service.get(service.id, 1)
                 for service in services
+            )
+            quantities_by_product = {
+                item.get("product_id"): item.get("quantity", 1)
+                for item in product_quantities
+            }
+            product_total = sum(
+                product.price * quantities_by_product.get(product.id, 1)
+                for product in products
             )
             free_delivery_offer = UserOffer.objects.filter(
                 user=validated_data["user"],
@@ -246,7 +309,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                 is_used=False,
             ).select_related("offer").order_by("claimed_at").first()
             delivery_cost = Decimal("0.00") if free_delivery_offer else Decimal("50.00")
-            order_total = catalog_total + delivery_cost
+            order_total = service_total + product_total + delivery_cost
             validated_data["price"] = order_total
             if free_delivery_offer:
                 validated_data["applied_offer"] = free_delivery_offer.offer
@@ -284,21 +347,46 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                         except Service.DoesNotExist:
                             pass
             else:
-                # If no quantities provided, create OrderItems with default quantity of 1
+                # If no quantities are provided, default each service to one.
                 for service in services:
                     OrderItem.objects.update_or_create(
                         order=order,
                         service=service,
                         defaults={'quantity': 1}
                     )
+
+        if products:
+            from .models import ProductOrderItem
+
+            quantities_by_product = {
+                item.get("product_id"): item.get("quantity", 1)
+                for item in product_quantities
+            }
+            for product in products:
+                ProductOrderItem.objects.update_or_create(
+                    order=order,
+                    product=product,
+                    defaults={
+                        'product_name': product.name,
+                        'unit_price': product.price,
+                        'quantity': quantities_by_product.get(product.id, 1),
+                    },
+                )
+                product.stock_quantity -= quantities_by_product.get(product.id, 1)
+                product.save(update_fields=['stock_quantity'])
         
         if not order.code:
             order.save(update_fields=["code"])
         return order
 
     def get_total_price(self, obj):
-        """Calculate total price from all services"""
-        total = sum(service.price for service in obj.services.all())
+        """Calculate the catalog subtotal across services and products."""
+        service_total = sum(service.price for service in obj.services.all())
+        product_total = sum(
+            item.unit_price * item.quantity
+            for item in obj.product_order_items.all()
+        )
+        total = service_total + product_total
         return float(total) if total else 0
 
 
@@ -451,7 +539,17 @@ class OrderListSerializer(serializers.ModelSerializer):
     def get_order_items(self, obj):
         """Return order items with quantities"""
         items = obj.order_items.all()
-        return OrderItemSerializer(items, many=True).data
+        serialized_items = list(OrderItemSerializer(items, many=True).data)
+        serialized_items.extend({
+            'id': item.id,
+            'service': None,
+            'service_name': item.product_name,
+            'service_price': float(item.unit_price),
+            'quantity': item.quantity,
+            'item_type': 'product',
+            'product': item.product_id,
+        } for item in obj.product_order_items.all())
+        return serialized_items
 
     def get_timeline(self, obj):
         """Return the order events/timeline for admin users or an empty list for others.
@@ -484,12 +582,20 @@ class OrderListSerializer(serializers.ModelSerializer):
         return out
 
     def get_total_price(self, obj):
-        """Calculate total price from all services"""
-        total = sum(service.price for service in obj.services.all())
+        """Calculate the catalog subtotal across services and products."""
+        service_total = sum(service.price for service in obj.services.all())
+        product_total = sum(
+            item.unit_price * item.quantity
+            for item in obj.product_order_items.all()
+        )
+        total = service_total + product_total
         return float(total) if total else None
 
     def get_package(self, obj):
-        return getattr(obj.service, "name", f"Package {obj.package}") if obj.service else f"Package {obj.package}"
+        if obj.service:
+            return obj.service.name
+        first_product_item = obj.product_order_items.first()
+        return first_product_item.product_name if first_product_item else f"Package {obj.package}"
 
     def get_price_display(self, obj):
         # Use total price from services if available

@@ -1689,7 +1689,7 @@ class PublicOrderSummaryView(APIView):
     def get(self, request, code, *args, **kwargs):
         try:
             order = Order.objects.select_related('service').prefetch_related(
-                'order_items__service'
+                'order_items__service', 'product_order_items'
             ).get(code=code)
         except Order.DoesNotExist:
             return Response({'detail': 'Order not found.'}, status=status.HTTP_404_NOT_FOUND)
@@ -1702,10 +1702,19 @@ class PublicOrderSummaryView(APIView):
             }
             for item in order.order_items.all()
         ]
+        items.extend(
+            {
+                'name': item.product_name,
+                'quantity': item.quantity,
+                'price': float(item.unit_price),
+                'item_type': 'product',
+            }
+            for item in order.product_order_items.all()
+        )
 
         return Response({
             'code': order.code,
-            'package': getattr(order.service, 'name', None) or 'Service order',
+            'package': getattr(order.service, 'name', None) or (items[0]['name'] if items else 'Delivery order'),
             'items': order.items,
             'total_amount': float(order.price or 0),
             'delivery_cost': 0.0 if order.free_delivery else 50.0,
