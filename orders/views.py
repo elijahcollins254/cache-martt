@@ -1346,9 +1346,57 @@ class OrderListCreateView(generics.ListCreateAPIView):
         print(f"[DEBUG] Rider after assignment: {order.rider.username if order.rider else 'None'}")
         print(f"[DEBUG] Rider phone: {order.rider.phone if order.rider and hasattr(order.rider, 'phone') else 'N/A'}")
 
-        # Online orders are provisional until checkout succeeds. Do not notify
-        # staff or customers, or expose the order as placed, before payment.
+        # Online orders remain provisional until checkout succeeds. Alert the
+        # admin and customer about pending payment without marking the order placed.
         if order.order_type == 'online' and not order.is_paid():
+            try:
+                from django.conf import settings
+                from services.sms_service import AfricasTalkingSMSService
+
+                admin_phone = settings.ADMIN_PHONE_NUMBER
+                if admin_phone:
+                    services = ', '.join(
+                        service.name for service in order.services.all()
+                    ) or 'N/A'
+                    customer_name = (
+                        order.user.get_full_name() or order.user.username
+                        if order.user
+                        else order.customer_name or 'Customer'
+                    )
+                    customer_phone = (
+                        (order.user.phone if order.user and order.user.phone else None)
+                        or order.customer_phone
+                        or 'N/A'
+                    )
+                    clean_pickup = (
+                        order.pickup_address.split('(contact:')[0].strip()
+                        if order.pickup_address
+                        else 'N/A'
+                    )
+                    admin_message = (
+                        f"CACHE INDUSTRIES\n"
+                        f"NEW ORDER - PAYMENT PENDING\n"
+                        f"Order #: {order.code}\n"
+                        f"Customer: {customer_name}\n"
+                        f"Phone: {customer_phone}\n"
+                        f"Pickup: {clean_pickup}\n"
+                        f"Dropoff: {order.dropoff_address}\n"
+                        f"Services: {services}\n"
+                        f"Items: {order.items}\n"
+                        f"Amount: KES {order.actual_price or order.price or 'TBD'}\n"
+                        f"Payment: NOT YET PAID\n"
+                        f"View: https://www.cache.co.ke/orders/{order.code}"
+                    )
+                    result = AfricasTalkingSMSService().send_sms(admin_phone, admin_message)
+                    if result and result.get('status') == 'success':
+                        print(f"✓ Unpaid order SMS sent to admin for order {order.code}")
+                    else:
+                        error_msg = result.get('message', 'Unknown error') if result else 'No response'
+                        print(f"⚠ Failed to send unpaid order SMS to admin: {error_msg}")
+            except Exception as sms_error:
+                # Admin SMS delivery must not undo or fail an already-created order.
+                print(f"⚠ Error sending unpaid order SMS for order {order.code}: {sms_error}")
+
             customer_phone = (
                 (order.user.phone if order.user and order.user.phone else None)
                 or order.customer_phone
