@@ -1,5 +1,5 @@
 # orders/views.py
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Prefetch
 from django.utils import timezone
 from decimal import Decimal
@@ -526,6 +526,13 @@ class OrderUpdateView(APIView):
                 )
 
             if new_status and new_status.lower() == 'delivered':
+                if getattr(request.user, 'role', None) == 'rider' and request.user.id not in {
+                    order.delivery_rider_id, order.rider_id
+                }:
+                    return Response(
+                        {'error': 'Only the assigned delivery rider can complete this delivery.'},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
                 delivered_code = str(request.data.get('delivery_code') or '').strip()
                 if not order.gate_notified_at:
                     return Response(
@@ -738,7 +745,13 @@ class OrderUpdateView(APIView):
                     order.fumigator = request.user
                     order.fumigated_at = timezone.now()
 
-            order.save()
+            with transaction.atomic():
+                order.save()
+                if status_changed_to_delivered:
+                    from riders.payouts import credit_delivery_earning
+                    delivery_rider = order.delivery_rider or order.rider
+                    if delivery_rider:
+                        credit_delivery_earning(order, delivery_rider)
 
             # Accept delivered_at from request (rider marking delivery)
             delivered_at = request.data.get('delivered_at')
